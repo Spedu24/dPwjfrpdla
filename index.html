@@ -619,17 +619,17 @@
             // Sensitive Torso Movement Smoothing
             smoothedTorsoEnergy = smoothedTorsoEnergy * 0.6 + torsoVel * 0.4;
 
-            // 4. Sitting vs Standing Height Ratio Validation (Expanded Threshold: <= 0.30)
+            // 4. Sitting vs Standing Height Ratio Validation
             const hipKneeDiff = Math.abs(avgHipY - avgKneeY);
-            const isSittingElevation = (hipKneeDiff <= 0.30) || (avgHipY > 0.65);
+            const isSittingElevation = (hipKneeDiff <= 0.48) || (avgHipY > 0.50);
 
             if (!isSittingElevation) {
                 return 'STANDING';
             }
 
-            // If torso is excessively moving or swaying while sitting
-            if (smoothedTorsoEnergy > 0.04) {
-                return 'STANDING'; // High priority wandering
+            // 몸통이 실제로 큰 폭으로 자리를 이탈하며 움직일 때만 감지 (0.04 -> 0.12로 완화)
+            if (smoothedTorsoEnergy > 0.12) {
+                return 'STANDING'; // 자리를 떠나는 돌아다님 판정
             }
 
             // 5. Arm Motion Sensitivity Analysis
