@@ -564,7 +564,7 @@
         }
 
         /* -------------------------------------------------------------------------- */
-        /*  4. MediaPipe Pose Analysis & Strict Posture Classification Engine         */
+        /*  4. MediaPipe Pose Analysis & Calibrated Posture Classification Engine     */
         /* -------------------------------------------------------------------------- */
         const POSE_LANDMARKS = {
             LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
@@ -597,9 +597,9 @@
             const avgKneeY = (lKnee.y + rKnee.y) / 2;
             const avgAnkleY = (lAnkle.y + rAnkle.y) / 2;
 
-            // 2. Leg Raised Check (Legs lifted above knee height / onto table)
+            // 2. Leg Raised Check (Relaxed Threshold: -0.12)
             if (lAnkle.visibility > 0.4 && rAnkle.visibility > 0.4) {
-                if (avgAnkleY < avgKneeY - 0.05) {
+                if (avgAnkleY < avgKneeY - 0.12) {
                     return 'LEG_RAISED';
                 }
             }
@@ -619,10 +619,9 @@
             // Sensitive Torso Movement Smoothing
             smoothedTorsoEnergy = smoothedTorsoEnergy * 0.6 + torsoVel * 0.4;
 
-            // 4. Sitting vs Standing Height Ratio Validation
-            // Sitting requirement: Hip and Knee must be nearly at the same horizontal level (|Hip Y - Knee Y| <= 0.18)
+            // 4. Sitting vs Standing Height Ratio Validation (Expanded Threshold: <= 0.30)
             const hipKneeDiff = Math.abs(avgHipY - avgKneeY);
-            const isSittingElevation = (hipKneeDiff <= 0.18) || (avgHipY > 0.68);
+            const isSittingElevation = (hipKneeDiff <= 0.30) || (avgHipY > 0.65);
 
             if (!isSittingElevation) {
                 return 'STANDING';
@@ -659,7 +658,7 @@
                 lEx: lElbow.x, lEy: lElbow.y
             };
 
-            // Moderate Arm Movement Threshold (0.80)
+            // Moderate Arm Movement Threshold (0.08)
             if (smoothedArmEnergy > 0.08) {
                 return 'SITTING_ARM_MOVING';
             }
