@@ -589,7 +589,7 @@
 
             // 1. Presence Validation
             const upperBodyVis = (lSh.visibility + rSh.visibility + lHip.visibility + rHip.visibility) / 4;
-            if (upperBodyVis < 0.35) {
+            if (upperBodyVis < 0.30) {
                 return 'ABSENT';
             }
 
@@ -597,14 +597,14 @@
             const avgKneeY = (lKnee.y + rKnee.y) / 2;
             const avgAnkleY = (lAnkle.y + rAnkle.y) / 2;
 
-            // 2. Leg Raised Check (Relaxed Threshold: -0.12)
-            if (lAnkle.visibility > 0.4 && rAnkle.visibility > 0.4) {
-                if (avgAnkleY < avgKneeY - 0.12) {
+            // 2. Leg Raised Check (Relaxed Threshold: -0.15)
+            if (lAnkle.visibility > 0.35 && rAnkle.visibility > 0.35) {
+                if (avgAnkleY < avgKneeY - 0.15) {
                     return 'LEG_RAISED';
                 }
             }
 
-            // 3. Torso / Body Wandering Movement Check
+            // 3. Torso / Body Wandering Movement Check with Deadzone Filtering
             const avgShoulderX = (lSh.x + rSh.x) / 2;
             const avgShoulderY = (lSh.y + rSh.y) / 2;
             const avgHipX = (lHip.x + rHip.x) / 2;
@@ -613,22 +613,25 @@
             if (prevKeypoints) {
                 const dx = (avgShoulderX - prevKeypoints.shX) + (avgHipX - prevKeypoints.hipX);
                 const dy = (avgShoulderY - prevKeypoints.shY) + (avgHipY - prevKeypoints.hipY);
-                torsoVel = Math.sqrt(dx * dx + dy * dy);
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Noise Deadzone Filter: Ignore micro-jitters under 0.02
+                torsoVel = dist > 0.02 ? dist : 0;
             }
 
-            // Sensitive Torso Movement Smoothing
-            smoothedTorsoEnergy = smoothedTorsoEnergy * 0.6 + torsoVel * 0.4;
+            // Heavy EMA Smoothing to filter out camera noise (0.85 / 0.15)
+            smoothedTorsoEnergy = smoothedTorsoEnergy * 0.85 + torsoVel * 0.15;
 
-            // 4. Sitting vs Standing Height Ratio Validation
+            // 4. Sitting vs Standing Height Ratio Validation (Ultra-Relaxed: <= 0.65 or Hip > 0.35)
             const hipKneeDiff = Math.abs(avgHipY - avgKneeY);
-            const isSittingElevation = (hipKneeDiff <= 0.48) || (avgHipY > 0.50);
+            const isSittingElevation = (hipKneeDiff <= 0.65) || (avgHipY > 0.35);
 
             if (!isSittingElevation) {
                 return 'STANDING';
             }
 
-            // 몸통이 실제로 큰 폭으로 자리를 이탈하며 움직일 때만 감지 (0.04 -> 0.12로 완화)
-            if (smoothedTorsoEnergy > 0.12) {
+            // 몸통 이동 에너지 임계값을 0.35로 대폭 완화 (실제 이동 시에만 발동)
+            if (smoothedTorsoEnergy > 0.35) {
                 return 'STANDING'; // 자리를 떠나는 돌아다님 판정
             }
 
@@ -644,10 +647,11 @@
                 const dw2 = Math.hypot(rWrist.x - prevKeypoints.rWx, rWrist.y - prevKeypoints.rWy);
                 const de1 = Math.hypot(lElbow.x - prevKeypoints.lEx, lElbow.y - prevKeypoints.lEy);
                 const de2 = Math.hypot(rElbow.x - prevKeypoints.rEx, rElbow.y - prevKeypoints.rEy);
-                armVel = (dw1 + dw2 + de1 + de2) / 4;
+                const rawArm = (dw1 + dw2 + de1 + de2) / 4;
+                armVel = rawArm > 0.03 ? rawArm : 0; // Arm Deadzone Filter
             }
 
-            smoothedArmEnergy = smoothedArmEnergy * 0.7 + armVel * 0.3;
+            smoothedArmEnergy = smoothedArmEnergy * 0.85 + armVel * 0.15;
 
             // Update keypoints cache
             prevKeypoints = {
@@ -658,8 +662,8 @@
                 lEx: lElbow.x, lEy: lElbow.y
             };
 
-            // Moderate Arm Movement Threshold (0.08)
-            if (smoothedArmEnergy > 0.08) {
+            // Arm Movement Threshold Relaxed (0.22)
+            if (smoothedArmEnergy > 0.22) {
                 return 'SITTING_ARM_MOVING';
             }
 
