@@ -1,1657 +1,1041 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>얌얌 식당! 매너왕을 찾아라!</title>
-  
-  <!-- Google Fonts: 귀여운 한글 폰트 (Jua & Gaegu) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gaegu:wght@700&family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
-  
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Three.js (3D 렌더링) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  
-  <!-- MediaPipe Pose & Camera Utils -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>얌얌 식당! 매너왕을 찾아라!</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-      user-select: none;
-      -webkit-user-select: none;
-      -webkit-touch-callout: none;
-    }
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      touch-action: manipulation;
-      overscroll-behavior: none;
-    }
-    body {
-      font-family: 'Jua', 'Noto Sans KR', sans-serif;
-      background-color: #1a1a2e;
-    }
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
-    /* 웹캠 좌우 미러링 */
-    .mirror-view {
-      transform: scaleX(-1);
-    }
-    
-    /* 펄스 애니메이션 및 바운스 */
-    @keyframes food-bounce {
-      0%, 100% { transform: scale(1) translateY(0); }
-      50% { transform: scale(1.08) translateY(-6px); }
-    }
-    .animate-food {
-      animation: food-bounce 1.5s infinite ease-in-out;
-    }
-    
-    @keyframes alert-pulse {
-      0%, 100% { transform: scale(1); opacity: 0.95; }
-      50% { transform: scale(1.04); opacity: 1; }
-    }
-    .animate-alert {
-      animation: alert-pulse 0.8s infinite ease-in-out;
-    }
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    /* 슬라이드 업 페이드 */
-    @keyframes float-up {
-      0% { opacity: 0; transform: translateY(20px); }
-      100% { opacity: 1; transform: translateY(0); }
-    }
-    .animate-float-in {
-      animation: float-up 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-    }
-  </style>
+    <!-- Google MediaPipe Pose & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <!-- Custom Style & Animations -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&family=Gaegu:wght@700&display=swap');
+
+        body {
+            font-family: 'Jua', sans-serif;
+            background-color: #0f172a;
+            color: #ffffff;
+            overflow: hidden;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .mirror-mode {
+            transform: scaleX(-1);
+        }
+
+        /* Pulse Animation for Scores and Warning Badges */
+        @keyframes pulse-bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+        .animate-pulse-bounce {
+            animation: pulse-bounce 0.8s infinite ease-in-out;
+        }
+
+        .food-card-selected {
+            border-color: #38bdf8 !important;
+            background-color: rgba(56, 189, 248, 0.25) !important;
+            transform: scale(1.05);
+        }
+    </style>
 </head>
-<body class="w-screen h-screen relative flex items-center justify-center m-0 p-0 text-slate-800">
+<body class="w-screen h-screen relative bg-slate-900 overflow-hidden select-none">
 
-  <!-- 1. 배경 웹캠 비디오 (숨겨진 피드) -->
-  <video id="webcam-video" class="hidden" playsinline webkit-playsinline muted autoplay></video>
+    <!-- 1. Background Video (Webcam Feed) -->
+    <video id="webcam-video" class="absolute inset-0 w-full h-full object-cover mirror-mode z-0" playsinline webkit-playsinline muted autoplay></video>
 
-  <!-- 2. 웹캠 피드 + 미디어파이프 스켈레톤 렌더링 캔버스 -->
-  <canvas id="pose-canvas" class="absolute inset-0 w-full h-full object-cover mirror-view z-0"></canvas>
+    <!-- 2. Skeleton Overlay Canvas -->
+    <canvas id="skeleton-canvas" class="absolute inset-0 w-full h-full object-cover mirror-mode z-10 pointer-events-none"></canvas>
 
-  <!-- 3. 파스텔 틴트 오버레이 -->
-  <div class="absolute inset-0 bg-gradient-to-b from-amber-100/30 via-transparent to-orange-200/40 pointer-events-none z-10 backdrop-blur-[1px]"></div>
+    <!-- 3. Three.js 3D Canvas (3D Food Render Engine) -->
+    <canvas id="three-canvas" class="absolute inset-0 w-full h-full z-20 pointer-events-none"></canvas>
 
-  <!-- 4. Three.js 3D 캔버스 컨테이너 (음식 렌더링) -->
-  <div id="three-container" class="absolute inset-0 pointer-events-none z-20"></div>
-
-  <!-- 5. 축하 꽃가루(Confetti) 캔버스 -->
-  <canvas id="confetti-canvas" class="absolute inset-0 pointer-events-none z-40 hidden"></canvas>
-
-  <!-- 연습 모드 전용 상단/중앙 안내 패널 -->
-  <div id="practice-panel" class="hidden absolute top-6 left-1/2 -translate-x-1/2 w-11/12 max-w-lg z-30 pointer-events-auto flex flex-col items-center gap-3">
-    <!-- 연습 모드 헤더 카드 -->
-    <div class="w-full bg-white/95 backdrop-blur-md px-5 py-3 rounded-3xl shadow-xl border-4 border-teal-300 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="text-2xl">🌱</span>
-        <div>
-          <h3 class="text-xs text-teal-600 font-bold">식사 예절 탐구</h3>
-          <p class="text-lg md:text-xl font-black text-teal-900">자세 연습하기 모드</p>
+    <!-- 4. Top-Center Fluid Warning & Status Container -->
+    <div id="top-center-alert-container" class="fixed inset-x-0 top-[clamp(4.2rem,8.5vh,6.5rem)] z-50 flex justify-center pointer-events-none px-4">
+        
+        <!-- Status Badge (Correct Posture) -->
+        <div id="status-badge" class="hidden transition-all duration-300 bg-emerald-500/95 text-white px-5 py-2 md:px-6 md:py-2.5 rounded-full shadow-lg border-2 border-emerald-300 flex items-center gap-2 text-base md:text-xl font-bold animate-pulse-bounce">
+            <span id="status-icon">🪑</span>
+            <span id="status-text">잘했어요!</span>
         </div>
-      </div>
-      <button id="exit-practice-btn" class="bg-rose-100 hover:bg-rose-200 text-rose-700 font-black text-sm px-4 py-2 rounded-2xl border-2 border-rose-300 active:scale-95 transition-transform shadow-sm">
-        나가기 ✕
-      </button>
-    </div>
 
-    <!-- 친절한 코칭 말풍선 (바르지 않은 자세 알림 또는 바른 자세 유지 축하) -->
-    <div id="practice-coach-card" class="hidden w-full bg-amber-50/95 backdrop-blur-md p-4 rounded-3xl shadow-2xl border-4 border-amber-300 flex items-center gap-4 transition-all duration-300 animate-float-in">
-      <div id="coach-avatar" class="w-14 h-14 bg-amber-200 rounded-2xl flex items-center justify-center text-3xl shadow-inner shrink-0">
-        🪑
-      </div>
-      <div class="flex-1">
-        <span id="coach-subtitle" class="text-xs font-bold text-amber-600 block">선생님의 안내</span>
-        <p id="coach-message" class="text-lg md:text-xl font-black text-amber-950 leading-snug">
-          자세를 확인하고 있어요!
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- 상단 HUD 영역: 좌/중앙/우 절대 좌표 배치로 태블릿 및 모바일에서 완벽한 정중앙 상단 유지 -->
-  <header id="game-hud" class="absolute inset-x-0 top-0 p-3 md:p-6 z-30 pointer-events-none transition-all duration-300 opacity-0">
-    <!-- 좌측 정보: 매너 점수 카드 -->
-    <div class="absolute left-3 md:left-6 top-3 md:top-6 pointer-events-auto flex flex-col gap-2">
-      <div class="bg-white/95 backdrop-blur-md px-3.5 py-2 md:px-5 md:py-3 rounded-2xl md:rounded-3xl shadow-xl border-3 md:border-4 border-yellow-300 flex items-center gap-2 md:gap-3">
-        <span class="text-2xl md:text-3xl">⭐</span>
-        <div>
-          <p class="text-[10px] md:text-xs text-amber-600 font-bold tracking-wider">매너 점수</p>
-          <p id="score-text" class="text-xl md:text-4xl text-amber-900 font-black tracking-normal">20점</p>
+        <!-- Warning Alert (Compact Alert Popup) -->
+        <div id="warning-alert" class="hidden transition-all duration-300 bg-rose-600/95 text-white px-4 py-2 md:px-5 md:py-2.5 rounded-full shadow-2xl border-2 border-rose-300 flex items-center gap-2 text-sm md:text-lg font-bold animate-pulse-bounce max-w-[90vw] sm:max-w-md text-center">
+            <span id="warning-icon" class="text-lg md:text-xl">🚨</span>
+            <span id="warning-text">돌아다니지 않아요!</span>
         </div>
-      </div>
     </div>
 
-    <!-- 우측 정보: 남은 시간 타이머 & 카메라 전환 버튼 (태블릿용) -->
-    <div class="absolute right-3 md:right-6 top-3 md:top-6 pointer-events-auto flex flex-col items-end gap-2">
-      <div class="bg-white/95 backdrop-blur-md px-3.5 py-2 md:px-6 md:py-3 rounded-2xl md:rounded-3xl shadow-xl border-3 md:border-4 border-rose-300 flex items-center gap-2 md:gap-3">
-        <span class="text-2xl md:text-3xl">⏰</span>
-        <div>
-          <p class="text-[10px] md:text-xs text-rose-500 font-bold tracking-wider">남은 시간</p>
-          <p id="timer-text" class="text-xl md:text-4xl text-rose-700 font-black">40초</p>
+    <!-- 5. Main UI Overlay Screen Layer -->
+    <div id="ui-layer" class="absolute inset-0 z-30 flex flex-col justify-between pointer-events-none p-4 md:p-6">
+
+        <!-- Top Navigation / HUD Bar -->
+        <header id="game-hud" class="w-full flex items-center justify-between pointer-events-auto hidden">
+            <!-- Left: Manner Score Card -->
+            <div class="bg-slate-900/85 backdrop-blur-md px-4 py-2 md:px-6 md:py-3 rounded-2xl border-2 border-amber-400 shadow-xl flex items-center gap-3">
+                <span class="text-2xl md:text-3xl">⭐</span>
+                <div>
+                    <div class="text-xs text-amber-300 font-bold uppercase tracking-wider">매너 점수</div>
+                    <div id="score-val" class="text-2xl md:text-4xl font-extrabold text-amber-400">20점</div>
+                </div>
+            </div>
+
+            <!-- Right: Timer & Camera Flip Controls -->
+            <div class="flex items-center gap-2 md:gap-3">
+                <!-- Camera Switch Button -->
+                <button id="btn-flip-cam" class="bg-slate-800/80 hover:bg-slate-700 text-white p-2.5 md:p-3 rounded-2xl border border-slate-600 shadow-lg transition active:scale-95" title="카메라 전환">
+                    🔄
+                </button>
+
+                <!-- Timer Badge -->
+                <div class="bg-slate-900/85 backdrop-blur-md px-4 py-2 md:px-6 md:py-3 rounded-2xl border-2 border-sky-400 shadow-xl flex items-center gap-3">
+                    <span class="text-2xl md:text-3xl">⏰</span>
+                    <div>
+                        <div class="text-xs text-sky-300 font-bold uppercase tracking-wider">남은 시간</div>
+                        <div id="timer-val" class="text-2xl md:text-4xl font-extrabold text-sky-300">20초</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Bottom Center: Food Cooking Progress Bar (Active Game Mode) -->
+        <div id="food-progress-container" class="w-full max-w-md mx-auto mb-4 bg-slate-900/90 backdrop-blur-md p-4 rounded-3xl border-2 border-sky-400/50 shadow-2xl text-center pointer-events-auto hidden">
+            <div id="food-label" class="text-lg md:text-xl text-sky-200 font-bold mb-2">🍕 음식을 만드는 중입니다...</div>
+            <div class="w-full bg-slate-800 rounded-full h-5 border border-slate-700 overflow-hidden relative shadow-inner">
+                <div id="progress-bar" class="bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-400 h-full w-0% transition-all duration-300 rounded-full"></div>
+            </div>
         </div>
-      </div>
 
-      <!-- 태블릿 카메라 전/후면 전환 버튼 -->
-      <button id="switch-cam-btn" class="bg-white/90 hover:bg-white text-slate-700 text-xs md:text-sm font-bold px-3 py-1.5 rounded-full shadow-md border border-slate-300 flex items-center gap-1 active:scale-95 transition-transform" title="카메라 전환">
-        <span>🔄</span> <span class="hidden sm:inline">카메라 전환</span>
-      </button>
-    </div>
-  </header>
-
-  <!-- 화면 전체 크기(가로/세로, 태블릿/PC/모바일)에 따라 뷰포트 전체 기준 유동적 정중앙 정렬 레이어 -->
-  <div id="hud-center-anchor" class="hidden fixed inset-x-0 top-[clamp(4.2rem,8.5vh,6.5rem)] z-50 pointer-events-none flex flex-col items-center justify-start px-4 w-full transition-all duration-300">
-    <!-- 1. 바른 자세 확인 뱃지 (경고 없을 때 표시) -->
-    <div id="status-badge" class="bg-emerald-500 text-white font-bold px-4 py-2 md:px-5 md:py-2.5 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2 transition-all duration-300">
-      <span id="status-icon" class="text-base md:text-xl">🪑</span>
-      <span id="status-text" class="text-xs md:text-base font-bold whitespace-nowrap">자세 확인 중...</span>
-    </div>
-
-    <!-- 2. 경고 팝업: 화면 전체 크기에 따라 유동적 크기와 완벽한 가로 중앙 정렬 -->
-    <div id="warning-alert" class="hidden w-auto max-w-[90vw] sm:max-w-md bg-rose-600/95 text-white px-5 py-2.5 md:px-7 md:py-3 rounded-2xl md:rounded-3xl shadow-2xl border-3 md:border-4 border-yellow-300 text-center animate-alert transition-all duration-300">
-      <div class="flex items-center justify-center gap-1.5 mb-0.5">
-        <span id="warning-icon" class="text-base md:text-xl">🚨</span>
-        <h3 id="warning-title" class="text-xs md:text-sm font-black text-rose-100">식사 예절 알림</h3>
-      </div>
-      <p id="warning-detail" class="text-base md:text-lg font-black text-yellow-200 whitespace-nowrap leading-tight">돌아다니지 않아요!</p>
-      <p id="warning-sub" class="text-[10px] md:text-xs text-rose-100 mt-0.5 font-medium leading-tight whitespace-nowrap">얌전히 앉으면 다시 요리돼요!</p>
-    </div>
-  </div>
-
-  <!-- 중앙 하단: 음식 요리 게이지 & 안내 -->
-  <div id="gauge-container" class="absolute bottom-6 left-1/2 -translate-x-1/2 w-11/12 max-w-md bg-white/95 backdrop-blur-md p-4 rounded-3xl shadow-2xl border-4 border-amber-300 flex flex-col items-center gap-2 z-30 pointer-events-none transition-all duration-300 opacity-0">
-    <div class="w-full flex justify-between items-center text-sm font-bold text-amber-800">
-      <span id="current-food-name" class="flex items-center gap-1 text-base text-orange-600">🍕 얌얌 피자 만드는 중!</span>
-      <span id="gauge-percent">0%</span>
-    </div>
-    
-    <!-- 프로그레스 바 -->
-    <div class="w-full bg-amber-100 h-6 rounded-full overflow-hidden p-1 border-2 border-amber-200">
-      <div id="progress-bar" class="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 rounded-full w-0 transition-all duration-150 shadow-inner"></div>
-    </div>
-    
-    <p class="text-xs text-amber-700 font-medium text-center">
-      💡 <span class="font-bold text-emerald-600">얌전히 의자에 앉아</span> 있으면 3초마다 매너 점수 10점 쑥쑥!
-    </p>
-  </div>
-
-  <!-- 1. 메인 메뉴 화면 모달 -->
-  <div id="start-modal" class="absolute inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50 transition-opacity duration-300">
-    <div class="bg-gradient-to-b from-amber-50 to-orange-100 p-7 md:p-8 rounded-3xl max-w-md w-full shadow-2xl border-4 border-amber-400 text-center flex flex-col items-center animate-float-in">
-      <div class="w-20 h-20 md:w-24 md:h-24 bg-amber-200 rounded-full flex items-center justify-center text-4xl md:text-5xl shadow-inner mb-3 animate-food">
-        🍽️
-      </div>
-      <h1 class="text-3xl md:text-4xl font-black text-amber-900 mb-1 tracking-tight">얌얌 식당!</h1>
-      <h2 class="text-lg md:text-xl font-bold text-orange-600 mb-4">매너왕을 찾아라! 👑</h2>
-      
-      <div class="bg-white/85 p-3.5 md:p-4 rounded-2xl border-2 border-amber-200 text-amber-900 text-xs md:text-sm leading-relaxed mb-5 w-full text-left space-y-1.5 shadow-sm">
-        <p class="font-bold text-emerald-700 flex items-center gap-1.5">
-          <span>✨</span> 웹캠 앞에 <strong>의자에 앉아 전신</strong>이 보이게 해주세요!
-        </p>
-        <p class="flex items-center gap-1.5">
-          <span>🪑</span> 의자에 예쁘게 앉고 <strong>팔을 얌전히</strong> 모아주세요.
-        </p>
-        <p class="text-rose-600 flex items-center gap-1.5">
-          <span>⚠️</span> 벌떡 일어나거나 팔을 휘저으면 음식이 식어요!
-        </p>
-      </div>
-
-      <!-- 메인 화면 버튼 그룹 -->
-      <div class="w-full flex flex-col gap-3">
-        <button id="main-start-btn" class="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white text-xl md:text-2xl font-black py-3.5 md:py-4 px-6 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 border-b-4 border-orange-800 flex items-center justify-center gap-2">
-          <span>🚀</span> 게임 시작하기!
-        </button>
-
-        <button id="main-practice-btn" class="w-full bg-gradient-to-r from-teal-400 to-emerald-500 hover:from-teal-500 hover:to-emerald-600 text-white text-lg md:text-xl font-black py-3 px-6 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 border-b-4 border-teal-700 flex items-center justify-center gap-2">
-          <span>🌱</span> 자세 연습하기 (점수X)
-        </button>
-      </div>
-
-      <p id="cam-status-msg" class="text-xs text-amber-800 mt-4 font-medium">카메라 권한을 허용하면 자동으로 게임이 준비됩니다.</p>
-    </div>
-  </div>
-
-  <!-- 음식 선택 모달 -->
-  <div id="food-select-modal" class="hidden absolute inset-0 bg-slate-900/85 backdrop-blur-md flex items-center justify-center p-4 z-50 transition-opacity duration-300">
-    <div class="bg-gradient-to-b from-yellow-50 via-amber-50 to-orange-100 p-6 md:p-8 rounded-3xl max-w-lg w-full shadow-2xl border-4 border-amber-400 text-center flex flex-col items-center animate-float-in">
-      <div class="text-4xl mb-1">👨‍🍳</div>
-      <h2 class="text-2xl md:text-3xl font-black text-amber-950 mb-1">어떤 음식을 만들건가요?</h2>
-      <p class="text-sm md:text-base font-bold text-orange-600 mb-5">얌전히 앉아있으면 완성될 맛있는 음식을 골라주세요!</p>
-
-      <!-- 3가지 음식 선택 카드 그리드 -->
-      <div class="grid grid-cols-3 gap-3 md:gap-4 w-full mb-6">
-        <!-- 0. 피자 -->
-        <button data-food="0" class="food-card bg-white p-3 md:p-4 rounded-2xl border-4 border-orange-500 ring-4 ring-orange-400 shadow-md hover:shadow-xl hover:scale-105 transition-all flex flex-col items-center text-center cursor-pointer group selected-food">
-          <div class="text-4xl md:text-5xl mb-2 group-hover:scale-110 transition-transform">🍕</div>
-          <span class="text-sm md:text-base font-black text-amber-900">얌얌 피자</span>
-          <span class="text-[10px] md:text-xs text-amber-600 font-bold mt-1">치즈 듬뿍!</span>
-        </button>
-
-        <!-- 1. 햄버거 -->
-        <button data-food="1" class="food-card bg-white p-3 md:p-4 rounded-2xl border-2 border-amber-200 hover:border-orange-500 shadow-md hover:shadow-xl hover:scale-105 transition-all flex flex-col items-center text-center cursor-pointer group">
-          <div class="text-4xl md:text-5xl mb-2 group-hover:scale-110 transition-transform">🍔</div>
-          <span class="text-sm md:text-base font-black text-amber-900">치즈 버거</span>
-          <span class="text-[10px] md:text-xs text-amber-600 font-bold mt-1">도톰한 패티</span>
-        </button>
-
-        <!-- 2. 케이크 -->
-        <button data-food="2" class="food-card bg-white p-3 md:p-4 rounded-2xl border-2 border-amber-200 hover:border-orange-500 shadow-md hover:shadow-xl hover:scale-105 transition-all flex flex-col items-center text-center cursor-pointer group">
-          <div class="text-4xl md:text-5xl mb-2 group-hover:scale-110 transition-transform">🍰</div>
-          <span class="text-sm md:text-base font-black text-amber-900">딸기 케이크</span>
-          <span class="text-[10px] md:text-xs text-amber-600 font-bold mt-1">달콤 생크림</span>
-        </button>
-      </div>
-
-      <!-- 요리 시작하기 & 뒤로가기 버튼 -->
-      <div class="w-full flex gap-3">
-        <button id="back-to-menu-btn" class="w-1/3 bg-slate-200 hover:bg-slate-300 text-slate-700 text-base md:text-lg font-bold py-3.5 rounded-2xl transition-all">
-          뒤로
-        </button>
-        <button id="confirm-food-start-btn" class="w-2/3 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white text-xl md:text-2xl font-black py-3.5 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all border-b-4 border-orange-800">
-          요리 시작! 🔥
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 2. 게임 종료 모달 -->
-  <div id="gameover-modal" class="hidden absolute inset-0 bg-slate-900/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
-    <div class="bg-gradient-to-b from-yellow-50 via-amber-100 to-orange-200 p-8 rounded-3xl max-w-md w-full shadow-2xl border-4 border-yellow-400 text-center flex flex-col items-center animate-float-in">
-      <div class="text-6xl mb-2">👑</div>
-      <h2 class="text-2xl md:text-3xl font-black text-amber-950 mb-1">식사 예절 완수!</h2>
-      <p class="text-lg md:text-xl font-bold text-orange-600 mb-4">당신은 얌얌 식당의 진정한 매너왕!</p>
-      
-      <div class="bg-white/90 p-5 rounded-2xl border-2 border-amber-300 w-full mb-6 shadow-inner space-y-3">
-        <div>
-          <span class="text-sm font-bold text-amber-700">최종 매너 점수</span>
-          <p id="final-score-text" class="text-4xl md:text-5xl font-black text-amber-900">0점</p>
+        <!-- Practice Mode Back Navigation -->
+        <div id="practice-hud" class="w-full flex justify-between items-center pointer-events-auto hidden">
+            <div class="bg-slate-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-emerald-400 text-emerald-300 font-bold text-base md:text-lg">
+                🤸 자세 연습 모드 중
+            </div>
+            <button id="btn-exit-practice" class="bg-rose-600 hover:bg-rose-500 text-white px-5 py-2.5 rounded-2xl font-bold shadow-lg transition active:scale-95">
+                🚪 나가기
+            </button>
         </div>
-        <div class="border-t border-amber-200 pt-3">
-          <span class="text-sm font-bold text-emerald-700">완성한 맛있는 음식들</span>
-          <p id="completed-foods-text" class="text-2xl font-black text-emerald-800 mt-1">🍕 🍔 🍰</p>
-        </div>
-      </div>
-
-      <button id="restart-btn" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white text-2xl font-black py-4 px-8 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 border-b-4 border-teal-700">
-        다시 도전하기 🔄
-      </button>
     </div>
-  </div>
 
-  <script>
-    /* ==========================================================================
-       1. WEB AUDIO API SYNTHESIZER (BGM & PROCEDURAL SOUND EFFECTS)
-       ========================================================================== */
-    class SoundEngine {
-      constructor() {
-        this.ctx = null;
-        this.isMuted = false;
-        this.bgmTimer = null;
-        this.bgmStep = 0;
-        this.isDucked = false;
-        this.bgmVolumeScale = 0.022; // BGM 기본 볼륨을 정돈하여 음성이 묻히지 않도록 최적화
-      }
-
-      init() {
-        if (!this.ctx) {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          this.ctx = new AudioContext();
-        }
-        if (this.ctx.state === 'suspended') {
-          this.ctx.resume();
-        }
-      }
-
-      /* TTS 음성 재생 시 배경음악을 20%로 낮추는 오디오 더킹 */
-      duck() {
-        this.isDucked = true;
-      }
-
-      /* TTS 종료 시 배경음악 원상복구 */
-      unduck() {
-        this.isDucked = false;
-      }
-
-      playChime() {
-        if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const notes = [523.25, 659.25, 783.99, 1046.50];
-        notes.forEach((freq, i) => {
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now + i * 0.08);
-
-          gain.gain.setValueAtTime(0.001, now + i * 0.08);
-          gain.gain.exponentialRampToValueAtTime(0.18, now + i * 0.08 + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.08 + 0.35);
-
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start(now + i * 0.08);
-          osc.stop(now + i * 0.08 + 0.36);
-        });
-      }
-
-      playTick() {
-        if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, now);
-        osc.frequency.exponentialRampToValueAtTime(1320, now + 0.05);
-
-        gain.gain.setValueAtTime(0.04, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.07);
-      }
-
-      playHintCue() {
-        if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(440, now);
-        osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.12);
-
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.36);
-      }
-
-      playWarning() {
-        if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(220, now);
-        osc.frequency.exponentialRampToValueAtTime(140, now + 0.22);
-
-        gain.gain.setValueAtTime(0.12, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.26);
-      }
-
-      playScorePop() {
-        if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(523.25, now);
-        osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.15);
-
-        gain.gain.setValueAtTime(0.12, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.26);
-      }
-
-      playFanfare() {
-        if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const chord = [
-          { f: 523.25, d: 0.15, t: 0 },
-          { f: 659.25, d: 0.15, t: 0.15 },
-          { f: 783.99, d: 0.15, t: 0.30 },
-          { f: 1046.50, d: 0.6, t: 0.45 },
-          { f: 880.00, d: 0.2, t: 1.1 },
-          { f: 1046.50, d: 0.9, t: 1.35 }
-        ];
-
-        chord.forEach(item => {
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(item.f, now + item.t);
-
-          gain.gain.setValueAtTime(0.001, now + item.t);
-          gain.gain.linearRampToValueAtTime(0.2, now + item.t + 0.03);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + item.t + item.d);
-
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start(now + item.t);
-          osc.stop(now + item.t + item.d + 0.05);
-        });
-      }
-
-      startBGM() {
-        if (this.bgmTimer) return;
-        this.init();
-
-        const melody = [
-          523.25, 0, 659.25, 783.99, 659.25, 0, 523.25, 659.25,
-          783.99, 880.0, 783.99, 659.25, 587.33, 0, 587.33, 0,
-          587.33, 0, 659.25, 698.46, 659.25, 0, 587.33, 0,
-          783.99, 0, 659.25, 523.25, 587.33, 783.99, 523.25, 0
-        ];
-        const bass = [
-          261.63, 261.63, 329.63, 329.63, 392.00, 392.00, 261.63, 261.63,
-          349.23, 349.23, 392.00, 392.00, 293.66, 293.66, 392.00, 392.00
-        ];
-
-        const stepDuration = 0.16;
-        this.bgmStep = 0;
-
-        this.bgmTimer = setInterval(() => {
-          if (!this.ctx || this.isMuted) return;
-          const now = this.ctx.currentTime;
-          const note = melody[this.bgmStep % melody.length];
-          const bNote = bass[Math.floor((this.bgmStep / 2) % bass.length)];
-
-          // 음성 재생 중(isDucked)일 때는 BGM 음량을 20%로 대폭 축소
-          const activeVol = this.bgmVolumeScale * (this.isDucked ? 0.2 : 1.0);
-
-          if (note > 0) {
-            const osc = this.ctx.createOscillator();
-            const gain = this.ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(note, now);
-
-            gain.gain.setValueAtTime(activeVol, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + stepDuration * 0.9);
-
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            osc.start(now);
-            osc.stop(now + stepDuration);
-          }
-
-          if (this.bgmStep % 2 === 0 && bNote > 0) {
-            const bOsc = this.ctx.createOscillator();
-            const bGain = this.ctx.createGain();
-            bOsc.type = 'triangle';
-            bOsc.frequency.setValueAtTime(bNote * 0.5, now);
-
-            bGain.gain.setValueAtTime(activeVol * 0.85, now);
-            bGain.gain.exponentialRampToValueAtTime(0.001, now + stepDuration * 1.5);
-
-            bOsc.connect(bGain);
-            bGain.connect(this.ctx.destination);
-            bOsc.start(now);
-            bOsc.stop(now + stepDuration * 1.6);
-          }
-
-          this.bgmStep++;
-        }, stepDuration * 1000);
-      }
-
-      stopBGM() {
-        if (this.bgmTimer) {
-          clearInterval(this.bgmTimer);
-          this.bgmTimer = null;
-        }
-      }
-    }
-
-    const sound = new SoundEngine();
-
-    // 음성(TTS) 엔진 및 가비지 컬렉터 방지 전역 변수
-    let activeUtterance = null;
-    let lastSpokenText = '';
-    let lastWarningTime = 0;
-    let koreanVoice = null;
-
-    // 브라우저 및 태블릿 내장 한국어 음성 검색 및 등록
-    function loadKoreanVoice() {
-      if (!('speechSynthesis' in window)) return;
-      try {
-        const voices = window.speechSynthesis.getVoices();
-        koreanVoice = voices.find(v => v.lang && (v.lang.toLowerCase().includes('ko') || v.lang.includes('kr'))) || null;
-      } catch (e) {
-        console.warn('Voice load error:', e);
-      }
-    }
-
-    if ('speechSynthesis' in window) {
-      loadKoreanVoice();
-      window.speechSynthesis.onvoiceschanged = loadKoreanVoice;
-    }
-
-    // 모바일/태블릿(iOS Safari, Chrome) TTS 권한 활성화(User Gesture Unlock)
-    function unlockTTS() {
-      if (!('speechSynthesis' in window)) return;
-      try {
-        window.speechSynthesis.resume();
-        // 빈 문자열이 아닌 안전한 공백 토큰으로 오디오 세션 즉시 개방
-        const unlockUtterance = new SpeechSynthesisUtterance(' ');
-        unlockUtterance.volume = 0.01;
-        unlockUtterance.rate = 2.0;
-        window.speechSynthesis.speak(unlockUtterance);
-      } catch (e) {
-        console.warn('TTS unlock error:', e);
-      }
-    }
-
-    function speakVoice(text) {
-      if (!('speechSynthesis' in window)) {
-        console.warn('SpeechSynthesis is not supported in this browser.');
-        return;
-      }
-
-      try {
-        // 브라우저 일시정지 상태 복구
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-
-        // 이전 큐 정리
-        window.speechSynthesis.cancel();
-
-        // cancel() 직후 바로 speak()를 호출하면 브라우저가 새 발화까지 취소하는 버그 방지 (80ms 딜레이)
-        setTimeout(() => {
-          try {
-            window.speechSynthesis.resume();
-            sound.duck();
-
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ko-KR';
-
-            // 한국어 음성 재확인 및 지정
-            if (!koreanVoice) loadKoreanVoice();
-            if (koreanVoice) utterance.voice = koreanVoice;
-
-            // 명료하고 또렷한 음량 및 피치 세팅
-            utterance.volume = 1.0;
-            utterance.rate = 0.94;
-            utterance.pitch = 1.05;
-
-            // 브라우저 가비지 컬렉터(GC)에 의해 소리가 도중에 끊기지 않도록 전역 변수에 고정
-            activeUtterance = utterance;
-
-            const onDone = () => {
-              activeUtterance = null;
-              setTimeout(() => sound.unduck(), 250);
-            };
-
-            utterance.onend = onDone;
-            utterance.onerror = (err) => {
-              console.warn('TTS error event:', err);
-              onDone();
-            };
-
-            window.speechSynthesis.speak(utterance);
-            lastSpokenText = text;
-          } catch (innerErr) {
-            sound.unduck();
-            console.warn('TTS speak error:', innerErr);
-          }
-        }, 80);
-      } catch (e) {
-        sound.unduck();
-        console.warn('TTS playback error:', e);
-      }
-    }
-  </script>
-
-  <script>
-    /* ==========================================================================
-       2. THREE.JS 3D PROCEDURAL FOOD RENDERING
-       ========================================================================== */
-    let scene, camera, renderer;
-    let foodGroup = null;
-
-    const foodItems = [
-      { name: "🍕 얌얌 피자", create: createPizzaMesh },
-      { name: "🍔 치즈 버거", create: createBurgerMesh },
-      { name: "🍰 딸기 케이크", create: createCakeMesh }
-    ];
-    let currentFoodType = 0;
-
-    function initThree() {
-      const container = document.getElementById('three-container');
-      scene = new THREE.Scene();
-
-      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-      camera.position.set(0, 0.5, 4.2);
-
-      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      container.appendChild(renderer.domElement);
-
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
-      scene.add(ambientLight);
-
-      const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
-      dirLight.position.set(3, 5, 4);
-      scene.add(dirLight);
-
-      foodGroup = new THREE.Group();
-      foodGroup.position.set(0, -0.2, 0);
-      foodGroup.scale.set(0.2, 0.2, 0.2);
-      scene.add(foodGroup);
-
-      window.addEventListener('resize', onWindowResize);
-    }
-
-    function onWindowResize() {
-      if (!camera || !renderer) return;
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    function clearFoodGroup() {
-      if (!foodGroup) return;
-      while (foodGroup.children.length > 0) {
-        const obj = foodGroup.children[0];
-        foodGroup.remove(obj);
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) {
-          if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-          else obj.material.dispose();
-        }
-      }
-    }
-
-    function createPizzaMesh() {
-      const g = new THREE.Group();
-      // 도우 바닥
-      const crustGeo = new THREE.CylinderGeometry(1.4, 1.45, 0.15, 24);
-      const crustMat = new THREE.MeshLambertMaterial({ color: 0xdeb887 });
-      const crust = new THREE.Mesh(crustGeo, crustMat);
-      g.add(crust);
-
-      // 치즈 토핑
-      const cheeseGeo = new THREE.CylinderGeometry(1.25, 1.25, 0.08, 24);
-      const cheeseMat = new THREE.MeshLambertMaterial({ color: 0xffd700 });
-      cheeseMat.roughness = 0.4;
-      const cheese = new THREE.Mesh(cheeseGeo, cheeseMat);
-      cheese.position.y = 0.09;
-      g.add(cheese);
-
-      // 페퍼로니 조각들
-      const pepGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.04, 12);
-      const pepMat = new THREE.MeshLambertMaterial({ color: 0xcc2900 });
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2;
-        const pep = new THREE.Mesh(pepGeo, pepMat);
-        pep.position.set(Math.cos(angle) * 0.7, 0.14, Math.sin(angle) * 0.7);
-        g.add(pep);
-      }
-      return g;
-    }
-
-    function createBurgerMesh() {
-      const g = new THREE.Group();
-      // 아래 번
-      const bottomBunGeo = new THREE.CylinderGeometry(1.1, 1.1, 0.3, 20);
-      const bunMat = new THREE.MeshLambertMaterial({ color: 0xe5a65d });
-      const bBun = new THREE.Mesh(bottomBunGeo, bunMat);
-      bBun.position.y = -0.4;
-      g.add(bBun);
-
-      // 고기 패티
-      const pattyGeo = new THREE.CylinderGeometry(1.15, 1.15, 0.25, 20);
-      const pattyMat = new THREE.MeshLambertMaterial({ color: 0x5c2c16 });
-      const patty = new THREE.Mesh(pattyGeo, pattyMat);
-      patty.position.y = -0.15;
-      g.add(patty);
-
-      // 노란 치즈 슬라이스
-      const cheeseGeo = new THREE.BoxGeometry(1.7, 0.06, 1.7);
-      const cheeseMat = new THREE.MeshLambertMaterial({ color: 0xffb703 });
-      const cheese = new THREE.Mesh(cheeseGeo, cheeseMat);
-      cheese.rotation.y = 0.4;
-      cheese.position.y = 0.01;
-      g.add(cheese);
-
-      // 양상추
-      const lettuceGeo = new THREE.CylinderGeometry(1.25, 1.25, 0.08, 16);
-      const lettuceMat = new THREE.MeshLambertMaterial({ color: 0x48bb78 });
-      const lettuce = new THREE.Mesh(lettuceGeo, lettuceMat);
-      lettuce.position.y = 0.12;
-      g.add(lettuce);
-
-      // 위 둥근 번
-      const topBunGeo = new THREE.SphereGeometry(1.15, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2);
-      const topBun = new THREE.Mesh(topBunGeo, bunMat);
-      topBun.position.y = 0.16;
-      g.add(topBun);
-      return g;
-    }
-
-    function createCakeMesh() {
-      const g = new THREE.Group();
-      // 케이크 시트 (2단)
-      const baseGeo = new THREE.CylinderGeometry(1.3, 1.3, 0.6, 24);
-      const baseMat = new THREE.MeshLambertMaterial({ color: 0xfff0f5 });
-      const base = new THREE.Mesh(baseGeo, baseMat);
-      base.position.y = -0.2;
-      g.add(base);
-
-      const topGeo = new THREE.CylinderGeometry(0.9, 0.9, 0.5, 24);
-      const topCake = new THREE.Mesh(topGeo, baseMat);
-      topCake.position.y = 0.35;
-      g.add(topCake);
-
-      // 딸기 장식들
-      const strawGeo = new THREE.ConeGeometry(0.18, 0.35, 10);
-      const strawMat = new THREE.MeshLambertMaterial({ color: 0xff1744 });
-      for (let i = 0; i < 5; i++) {
-        const angle = (i / 5) * Math.PI * 2;
-        const berry = new THREE.Mesh(strawGeo, strawMat);
-        berry.position.set(Math.cos(angle) * 0.55, 0.65, Math.sin(angle) * 0.55);
-        g.add(berry);
-      }
-      return g;
-    }
-
-    function createFoodModel(index) {
-      clearFoodGroup();
-      if (!foodItems[index]) return;
-      const mesh = foodItems[index].create();
-      foodGroup.add(mesh);
-      foodGroup.scale.set(0.2, 0.2, 0.2);
-    }
-
-    function animateThree() {
-      requestAnimationFrame(animateThree);
-      if (foodGroup) {
-        foodGroup.rotation.y += 0.015;
-        foodGroup.rotation.x = Math.sin(Date.now() * 0.002) * 0.1;
-      }
-      if (renderer && scene && camera) {
-        renderer.render(scene, camera);
-      }
-    }
-  </script>
-
-  <script>
-    /* ==========================================================================
-       3. MEDIAPIPE POSE DETECTION & POSTURE RECOGNITION ALGORITHM
-       ========================================================================== */
-    const videoElement = document.getElementById('webcam-video');
-    const canvasElement = document.getElementById('pose-canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-
-    const POSE_STATE = {
-      ABSENT: 'ABSENT',
-      SITTING: 'SITTING',
-      STANDING: 'STANDING',
-      SITTING_ARM_MOVING: 'SITTING_ARM_MOVING'
-    };
-
-    let currentPoseState = POSE_STATE.ABSENT;
-    let poseClassifierSmooth = [];
-
-    // 바른 자세(앉기) 1초 이상 유지 감지 타이머
-    let rawSittingStartTime = null;
-    let isSittingVerified = false; // 1초 이상 앉은 상태가 유지되었는지 여부
-    let practiceCelebrated = false; // 연습 모드에서 축하 폭죽이 1회 발동되었는지 여부
-
-    // 팔 및 몸통(Torso) 움직임 감지 변수
-    let prevArmJoints = null;
-    let prevArmTimestamp = 0;
-    let armMovementEnergy = 0;
-
-    let prevTorsoCenter = null;
-    let prevTorsoTimestamp = 0;
-    let torsoMovementEnergy = 0;
-
-    let renderTransform = { dx: 0, dy: 0, dw: 0, dh: 0 };
-
-    const POSE_CONNECTIONS = [
-      [11, 12],
-      [11, 13], [13, 15],
-      [12, 14], [14, 16],
-      [11, 23], [12, 24],
-      [23, 24],
-      [23, 25], [25, 27],
-      [24, 26], [26, 28],
-      [27, 31], [28, 32]
-    ];
-
-    function onPoseResults(results) {
-      if (canvasElement.width !== window.innerWidth || canvasElement.height !== window.innerHeight) {
-        canvasElement.width = window.innerWidth;
-        canvasElement.height = window.innerHeight;
-      }
-
-      const canvasW = canvasElement.width;
-      const canvasH = canvasElement.height;
-
-      canvasCtx.save();
-      canvasCtx.clearRect(0, 0, canvasW, canvasH);
-
-      if (results.image && results.image.width > 0) {
-        const imgW = results.image.width;
-        const imgH = results.image.height;
-        const imgAspect = imgW / imgH;
-        const canvasAspect = canvasW / canvasH;
-
-        let drawW, drawH, drawX, drawY;
-        if (canvasAspect > imgAspect) {
-          drawW = canvasW;
-          drawH = canvasW / imgAspect;
-          drawX = 0;
-          drawY = (canvasH - drawH) / 2;
-        } else {
-          drawH = canvasH;
-          drawW = canvasH * imgAspect;
-          drawX = (canvasW - drawW) / 2;
-          drawY = 0;
-        }
-
-        renderTransform = { dx: drawX, dy: drawY, dw: drawW, dh: drawH };
-        canvasCtx.drawImage(results.image, drawX, drawY, drawW, drawH);
-      }
-
-      if (results.poseLandmarks && results.poseLandmarks.length > 0) {
-        const landmarks = results.poseLandmarks;
-        drawSkeleton(landmarks);
-        classifyPosture(landmarks);
-      } else {
-        prevArmJoints = null;
-        prevTorsoCenter = null;
-        updatePoseStatus(POSE_STATE.ABSENT);
-      }
-
-      canvasCtx.restore();
-    }
-
-    function drawSkeleton(landmarks) {
-      const { dx, dy, dw, dh } = renderTransform;
-
-      function toScreen(pt) {
-        return {
-          x: dx + pt.x * dw,
-          y: dy + pt.y * dh
+    <!-- 6. Modal Screens (Main, Food Selection, Game Results) -->
+
+    <!-- Modal A: Main Screen -->
+    <div id="screen-main" class="absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-lg flex flex-col items-center justify-center p-6 text-center">
+        <div class="max-w-lg w-full bg-slate-900/90 border-4 border-amber-400/80 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+            <div class="text-5xl md:text-6xl animate-bounce">🍽️</div>
+            <h1 class="text-3xl md:text-5xl font-black text-amber-300 tracking-tight leading-tight">
+                얌얌 식당!<br><span class="text-white text-2xl md:text-4xl">매너왕을 찾아라!</span>
+            </h1>
+            <p class="text-slate-300 text-base md:text-lg leading-relaxed font-semibold">
+                식당에서는 의자에 예쁘게 앉아서 음식을 기다려요!<br>
+                바른 자세를 유지하면 맛있는 요리가 완성됩니다.
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-4 pt-2">
+                <button id="btn-practice-mode" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xl font-bold py-4 rounded-2xl shadow-xl transition transform active:scale-95 border-2 border-emerald-300">
+                    🤸 자세 연습하기
+                </button>
+                <button id="btn-start-select" class="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white text-xl font-bold py-4 rounded-2xl shadow-xl transition transform active:scale-95 border-2 border-amber-300">
+                    🎮 게임 시작하기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal B: Food Selection Screen -->
+    <div id="screen-select-food" class="absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-lg flex flex-col items-center justify-center p-6 text-center hidden">
+        <div class="max-w-2xl w-full bg-slate-900/90 border-4 border-sky-400/80 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+            <h2 class="text-2xl md:text-4xl font-extrabold text-sky-300">어떤 음식을 만들건가요?</h2>
+            <p class="text-slate-300 text-base md:text-lg">완성하고 싶은 메뉴를 하나 선택해 주세요!</p>
+
+            <div class="grid grid-cols-3 gap-4 py-2">
+                <!-- Food Item 0: Pizza -->
+                <div class="food-card food-card-selected cursor-pointer bg-slate-800 border-2 border-slate-600 hover:border-sky-400 rounded-2xl p-4 transition transform flex flex-col items-center space-y-2" data-food-index="0">
+                    <span class="text-4xl md:text-6xl">🍕</span>
+                    <span class="text-lg md:text-xl font-bold text-amber-300">피자</span>
+                </div>
+                <!-- Food Item 1: Burger -->
+                <div class="food-card cursor-pointer bg-slate-800 border-2 border-slate-600 hover:border-sky-400 rounded-2xl p-4 transition transform flex flex-col items-center space-y-2" data-food-index="1">
+                    <span class="text-4xl md:text-6xl">🍔</span>
+                    <span class="text-lg md:text-xl font-bold text-amber-300">치즈버거</span>
+                </div>
+                <!-- Food Item 2: Cake -->
+                <div class="food-card cursor-pointer bg-slate-800 border-2 border-slate-600 hover:border-sky-400 rounded-2xl p-4 transition transform flex flex-col items-center space-y-2" data-food-index="2">
+                    <span class="text-4xl md:text-6xl">🍰</span>
+                    <span class="text-lg md:text-xl font-bold text-amber-300">생크림케이크</span>
+                </div>
+            </div>
+
+            <div class="flex gap-4 pt-2">
+                <button id="btn-back-main" class="w-1/3 bg-slate-700 hover:bg-slate-600 text-white text-lg font-bold py-3.5 rounded-2xl transition">
+                    이전으로
+                </button>
+                <button id="btn-start-game" class="w-2/3 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-xl font-bold py-3.5 rounded-2xl shadow-xl transition transform active:scale-95 border-2 border-sky-300">
+                    요리 시작하기! 🚀
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal C: Game Result Screen -->
+    <div id="screen-result" class="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center hidden">
+        <div class="max-w-lg w-full bg-slate-900/95 border-4 border-amber-400 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+            <div class="text-6xl animate-bounce">🏆</div>
+            <h2 class="text-3xl md:text-4xl font-extrabold text-amber-300">식사 예절 완수!</h2>
+            <p class="text-xl md:text-2xl text-white font-bold">당신은 얌얌 식당의 <span class="text-amber-400">매너왕!</span></p>
+
+            <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                <div class="text-sm text-slate-400 font-bold mb-1">최종 획득 점수</div>
+                <div id="final-score" class="text-4xl md:text-5xl font-black text-amber-400">20점</div>
+            </div>
+
+            <button id="btn-restart-game" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xl font-bold py-4 rounded-2xl shadow-xl transition transform active:scale-95 border-2 border-emerald-300">
+                🔄 다시 하기
+            </button>
+        </div>
+    </div>
+
+    <!-- Application Script Implementation -->
+    <script>
+        /* -------------------------------------------------------------------------- */
+        /*  1. Global State Management                                                */
+        /* -------------------------------------------------------------------------- */
+        const GameState = {
+            MAIN: 'MAIN',
+            PRACTICE: 'PRACTICE',
+            SELECT_FOOD: 'SELECT_FOOD',
+            PLAYING: 'PLAYING',
+            RESULT: 'RESULT'
         };
-      }
 
-      POSE_CONNECTIONS.forEach(([startIdx, endIdx]) => {
-        const p1 = landmarks[startIdx];
-        const p2 = landmarks[endIdx];
+        let currentState = GameState.MAIN;
 
-        if (p1 && p2 && (p1.visibility === undefined || (p1.visibility > 0.35 && p2.visibility > 0.35))) {
-          const s1 = toScreen(p1);
-          const s2 = toScreen(p2);
+        // Game Metrics & Timers
+        let gameScore = 20;
+        let gameTimeLeft = 20;
+        let gameInterval = null;
+        let selectedFoodIndex = 0; // 0: Pizza, 1: Burger, 2: Cake
+        let foodProgress = 0; // 0 to 100%
 
-          const isArmBone = (startIdx === 11 && endIdx === 13) || (startIdx === 13 && endIdx === 15) ||
-                            (startIdx === 12 && endIdx === 14) || (startIdx === 14 && endIdx === 16);
+        // Camera State
+        let facingMode = 'user'; // 'user' or 'environment'
+        let cameraUtils = null;
 
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(s1.x, s1.y);
-          canvasCtx.lineTo(s2.x, s2.y);
-          canvasCtx.lineWidth = Math.max(4, Math.min(8, window.innerWidth * 0.008));
-          
-          if (currentPoseState === POSE_STATE.SITTING) {
-            canvasCtx.strokeStyle = '#00FF66';
-            canvasCtx.shadowColor = '#00FF66';
-          } else if (currentPoseState === POSE_STATE.SITTING_ARM_MOVING && isArmBone) {
-            canvasCtx.strokeStyle = '#FF9900';
-            canvasCtx.shadowColor = '#FF9900';
-          } else {
-            canvasCtx.strokeStyle = '#FF3366';
-            canvasCtx.shadowColor = '#FF3366';
-          }
-          canvasCtx.shadowBlur = 8;
-          canvasCtx.lineCap = 'round';
-          canvasCtx.stroke();
-        }
-      });
+        // Posture States: 'SITTING', 'SITTING_ARM_MOVING', 'STANDING', 'LEG_RAISED', 'ABSENT'
+        let currentPosture = 'ABSENT';
+        let rawSittingStartTime = 0;
+        let isSittingVerified = false;
+        let sittingConsecutiveTicks = 0;
 
-      landmarks.forEach((p, idx) => {
-        if (idx === 0 || (idx >= 11 && idx <= 28)) {
-          if (p.visibility === undefined || p.visibility > 0.35) {
-            const sp = toScreen(p);
-            canvasCtx.beginPath();
-            canvasCtx.arc(sp.x, sp.y, Math.max(5, Math.min(9, window.innerWidth * 0.009)), 0, 2 * Math.PI);
-            canvasCtx.fillStyle = '#FFFFFF';
-            canvasCtx.shadowColor = '#FFEB3B';
-            canvasCtx.shadowBlur = 8;
-            canvasCtx.fill();
-            canvasCtx.lineWidth = 2.5;
-            canvasCtx.strokeStyle = (idx === 15 || idx === 16) ? '#FF9900' : '#FFD700';
-            canvasCtx.stroke();
-          }
-        }
-      });
-    }
+        // Cooldown and Energy Tracking
+        let lastWarningTime = 0;
+        const WARNING_COOLDOWN_MS = 5000;
+        let prevKeypoints = null;
+        let smoothedArmEnergy = 0;
+        let smoothedTorsoEnergy = 0;
 
-    function classifyPosture(landmarks) {
-      const leftShoulder = landmarks[11];
-      const rightShoulder = landmarks[12];
-      const leftHip = landmarks[23];
-      const rightHip = landmarks[24];
-      const leftKnee = landmarks[25];
-      const rightKnee = landmarks[26];
+        /* -------------------------------------------------------------------------- */
+        /*  2. Robust Web Audio Synthesizer & Universal TTS Engine                    */
+        /* -------------------------------------------------------------------------- */
+        let audioCtx = null;
+        let bgmGainNode = null;
+        let bgmInterval = null;
+        let activeUtterance = null; // Protect from JS Garbage Collection
 
-      const leftElbow = landmarks[13];
-      const rightElbow = landmarks[14];
-      const leftWrist = landmarks[15];
-      const rightWrist = landmarks[16];
-
-      const shoulderVis = ((leftShoulder?.visibility || 0) + (rightShoulder?.visibility || 0)) / 2;
-      const hipVis = ((leftHip?.visibility || 0) + (rightHip?.visibility || 0)) / 2;
-      const kneeVis = ((leftKnee?.visibility || 0) + (rightKnee?.visibility || 0)) / 2;
-
-      if (shoulderVis < 0.35 || hipVis < 0.25) {
-        pushClassification(POSE_STATE.ABSENT);
-        return;
-      }
-
-      const now = performance.now();
-
-      // 1. 몸통 중심(어깨 11, 12번 및 골반 23, 24번 평균) 좌표 계산
-      const currentTorsoX = (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4;
-      const currentTorsoY = (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4;
-
-      let isMovingTorso = false;
-      if (prevTorsoCenter && prevTorsoTimestamp > 0) {
-        const dtTorso = (now - prevTorsoTimestamp) / 1000;
-        if (dtTorso > 0.02 && dtTorso < 0.4) {
-          const dTorso = Math.hypot(currentTorsoX - prevTorsoCenter.x, currentTorsoY - prevTorsoCenter.y);
-          const torsoSpeed = dTorso / dtTorso;
-          // 몸통 움직임 에너지 누적 및 스무딩
-          torsoMovementEnergy = torsoMovementEnergy * 0.65 + torsoSpeed * 0.35;
-
-          // 몸통을 인식하는 부분이 일정 이상 움직이면 돌아다니는 것으로 감지
-          if (torsoMovementEnergy > 0.32) {
-            isMovingTorso = true;
-          }
-        }
-      }
-      prevTorsoCenter = { x: currentTorsoX, y: currentTorsoY };
-      prevTorsoTimestamp = now;
-
-      // 2. 팔 움직임 감지 계산
-      let isMovingArms = false;
-      if (prevArmJoints && prevArmTimestamp > 0) {
-        const dtArm = (now - prevArmTimestamp) / 1000;
-        if (dtArm > 0.02 && dtArm < 0.4) {
-          const dLWrist = Math.hypot(leftWrist.x - prevArmJoints.lw.x, leftWrist.y - prevArmJoints.lw.y);
-          const dRWrist = Math.hypot(rightWrist.x - prevArmJoints.rw.x, rightWrist.y - prevArmJoints.rw.y);
-          const dLElbow = Math.hypot(leftElbow.x - prevArmJoints.le.x, leftElbow.y - prevArmJoints.le.y);
-          const dRElbow = Math.hypot(rightElbow.x - prevArmJoints.re.x, rightElbow.y - prevArmJoints.re.y);
-
-          const armSpeed = (dLWrist * 1.1 + dRWrist * 1.1 + (dLElbow + dRElbow) * 0.6) / dtArm;
-          armMovementEnergy = armMovementEnergy * 0.7 + armSpeed * 0.3;
-
-          if (armMovementEnergy > 0.80) {
-            isMovingArms = true;
-          }
-        }
-      }
-
-      prevArmJoints = {
-        lw: { x: leftWrist.x, y: leftWrist.y },
-        rw: { x: rightWrist.x, y: rightWrist.y },
-        le: { x: leftElbow.x, y: leftElbow.y },
-        re: { x: rightElbow.x, y: rightElbow.y }
-      };
-      prevArmTimestamp = now;
-
-      // 3. 상태 분류 및 우선순위:
-      // 몸통 움직임(돌아다님)과 팔 움직임이 동시에 발생할 경우 "돌아다니지 않아요(STANDING)"를 최우선 인식
-      if (isMovingTorso) {
-        pushClassification(POSE_STATE.STANDING);
-      } else if (isMovingArms) {
-        pushClassification(POSE_STATE.SITTING_ARM_MOVING);
-      } else {
-        pushClassification(POSE_STATE.SITTING);
-      }
-    }
-
-    function pushClassification(state) {
-      poseClassifierSmooth.push(state);
-      if (poseClassifierSmooth.length > 6) {
-        poseClassifierSmooth.shift();
-      }
-
-      const countMap = {};
-      poseClassifierSmooth.forEach(s => countMap[s] = (countMap[s] || 0) + 1);
-
-      let maxCount = 0;
-      let decidedState = state;
-      for (const [st, cnt] of Object.entries(countMap)) {
-        if (cnt > maxCount) {
-          maxCount = cnt;
-          decidedState = st;
-        }
-      }
-
-      // 1초 유지 로직: 앉은 자세(SITTING)일 때만 시작 시간을 기록하고 1000ms 유지 체크
-      const now = performance.now();
-      if (decidedState === POSE_STATE.SITTING) {
-        if (!rawSittingStartTime) {
-          rawSittingStartTime = now;
-        }
-        if (now - rawSittingStartTime >= 1000) {
-          isSittingVerified = true;
-        } else {
-          isSittingVerified = false;
-        }
-      } else {
-        rawSittingStartTime = null;
-        isSittingVerified = false;
-        practiceCelebrated = false; // 자세가 흐트러지면 다시 축하 가능하도록 리셋
-      }
-
-      updatePoseStatus(decidedState);
-    }
-
-    let lastPracticeState = null;
-    let lastGameState = null;
-
-    function updatePoseStatus(state) {
-      currentPoseState = state;
-      const now = Date.now();
-
-      // 1. 연습 모드 UI 및 음성 안내 업데이트
-      if (currentMode === 'practice') {
-        const coachCard = document.getElementById('practice-coach-card');
-        const avatar = document.getElementById('coach-avatar');
-        const subtitle = document.getElementById('coach-subtitle');
-        const message = document.getElementById('coach-message');
-
-        if (state === POSE_STATE.SITTING) {
-          if (isSittingVerified) {
-            // 1초 이상 바른 자세 유지 성공 시
-            coachCard.classList.remove('hidden');
-            coachCard.className = "w-full bg-emerald-50/95 backdrop-blur-md p-4 rounded-3xl shadow-2xl border-4 border-emerald-400 flex items-center gap-4 transition-all duration-300 animate-float-in";
-            avatar.className = "w-14 h-14 bg-emerald-200 rounded-2xl flex items-center justify-center text-3xl shadow-inner shrink-0";
-            avatar.textContent = "🎉";
-            subtitle.className = "text-xs font-bold text-emerald-600 block";
-            subtitle.textContent = "식사 예절 성공";
-            message.className = "text-lg md:text-xl font-black text-emerald-950 leading-snug";
-            message.textContent = "참 잘했어요!";
-
-            if (!practiceCelebrated) {
-              practiceCelebrated = true;
-              startConfetti();
-              sound.playChime();
-              speakVoice("참 잘했어요!");
+        function initAudioEngine() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
             }
-          } else {
-            // 아직 1초가 되지 않은 앉기 상태
-            coachCard.classList.remove('hidden');
-            coachCard.className = "w-full bg-teal-50/95 backdrop-blur-md p-4 rounded-3xl shadow-2xl border-4 border-teal-300 flex items-center gap-4 transition-all duration-300 animate-float-in";
-            avatar.className = "w-14 h-14 bg-teal-200 rounded-2xl flex items-center justify-center text-3xl shadow-inner shrink-0";
-            avatar.textContent = "⏳";
-            subtitle.className = "text-xs font-bold text-teal-600 block";
-            subtitle.textContent = "자세 유지 중";
-            message.className = "text-lg md:text-xl font-black text-teal-950 leading-snug";
-            message.textContent = "1초간 가만히 있어볼까요?";
-          }
-          lastPracticeState = state;
-        } else {
-          // 바르지 않은 자세일 때
-          stopConfetti();
-          coachCard.classList.remove('hidden');
-          coachCard.className = "w-full bg-amber-50/95 backdrop-blur-md p-4 rounded-3xl shadow-2xl border-4 border-amber-300 flex items-center gap-4 transition-all duration-300 animate-float-in";
-          avatar.className = "w-14 h-14 bg-amber-200 rounded-2xl flex items-center justify-center text-3xl shadow-inner shrink-0";
-          subtitle.className = "text-xs font-bold text-amber-600 block";
-          message.className = "text-lg md:text-xl font-black text-amber-950 leading-snug";
-
-          let alertMessage = "";
-          if (state === POSE_STATE.SITTING_ARM_MOVING) {
-            avatar.textContent = "🖐️";
-            subtitle.textContent = "식사 예절 알림";
-            alertMessage = "팔을 제자리로 해요!";
-            message.textContent = alertMessage;
-          } else {
-            avatar.textContent = "🚶";
-            subtitle.textContent = "식사 예절 알림";
-            alertMessage = "돌아다니지 않아요!";
-            message.textContent = alertMessage;
-          }
-
-          // 경고음 및 음성 안내는 최소 5초에 한 번만 실행 (5000ms 쿨다운)
-          if (now - lastWarningTime >= 5000 || lastPracticeState === POSE_STATE.SITTING) {
-            sound.playHintCue();
-            speakVoice(alertMessage);
-            lastWarningTime = now;
-          }
-          lastPracticeState = state;
-        }
-        return;
-      }
-
-      // 2. 실전 게임 모드 UI 업데이트
-      const badge = document.getElementById('status-badge');
-      const icon = document.getElementById('status-icon');
-      const text = document.getElementById('status-text');
-      const warningAlert = document.getElementById('warning-alert');
-      const warningTitle = document.getElementById('warning-title');
-      const warningDetail = document.getElementById('warning-detail');
-      const warningSub = document.getElementById('warning-sub');
-      const warningIcon = document.getElementById('warning-icon');
-
-      if (!isPlaying || currentMode !== 'game') return;
-
-      if (state === POSE_STATE.SITTING) {
-        warningAlert.classList.add('hidden');
-        badge.classList.remove('hidden');
-
-        if (isSittingVerified) {
-          // 1초 이상 유지 완료된 경우에만 '잘했어요!' 표시
-          badge.className = "bg-emerald-500 text-white font-bold px-4 py-2 md:px-5 md:py-2.5 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2 transition-all duration-300";
-          icon.textContent = "🪑";
-          text.textContent = "잘했어요!";
-        } else {
-          // 1초 미만인 경우 준비 중 뱃지 표시
-          badge.className = "bg-teal-500 text-white font-bold px-4 py-2 md:px-5 md:py-2.5 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2 transition-all duration-300";
-          icon.textContent = "⏳";
-          text.textContent = "자세 유지 중...";
-        }
-        lastGameState = state;
-      } else {
-        // 경고 상태: 상태 뱃지는 숨기고 중앙 상단 경고 팝업 표시
-        badge.classList.add('hidden');
-        warningAlert.classList.remove('hidden');
-
-        let alertMessage = "";
-        if (state === POSE_STATE.SITTING_ARM_MOVING) {
-          warningIcon.textContent = "🖐️";
-          warningTitle.textContent = "식사 예절 알림";
-          warningDetail.textContent = "팔을 제자리로 해요!";
-          warningSub.textContent = "얌전히 손을 무릎에 올리면 요리가 다시 만들어져요!";
-          alertMessage = "팔을 제자리로 해요!";
-        } else {
-          warningIcon.textContent = "🚨";
-          warningTitle.textContent = "식사 예절 알림";
-          warningDetail.textContent = "돌아다니지 않아요!";
-          warningSub.textContent = "의자에 얌전히 앉아있으면 요리가 다시 만들어져요!";
-          alertMessage = "돌아다니지 않아요!";
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
         }
 
-        // 게임 모드에서도 바르지 않은 자세 발생 시 5초 쿨다운으로 경고음 및 TTS 음성 코칭 출력
-        if (now - lastWarningTime >= 5000 || lastGameState === POSE_STATE.SITTING) {
-          sound.playWarning();
-          speakVoice(alertMessage);
-          lastWarningTime = now;
-        }
-        lastGameState = state;
-      }
-    }
-  </script>
-
-  <script>
-    /* ==========================================================================
-       4. PROCEDURAL CONFETTI FIREWORKS
-       ========================================================================== */
-    const confettiCanvas = document.getElementById('confetti-canvas');
-    const confettiCtx = confettiCanvas.getContext('2d');
-    let confettiParticles = [];
-    let confettiAnimId = null;
-
-    function startConfetti() {
-      confettiCanvas.classList.remove('hidden');
-      confettiCanvas.width = window.innerWidth;
-      confettiCanvas.height = window.innerHeight;
-      confettiParticles = [];
-
-      const colors = ['#FFD700', '#FF4081', '#00E676', '#00B0FF', '#FF9100', '#E040FB'];
-      for (let i = 0; i < 180; i++) {
-        confettiParticles.push({
-          x: Math.random() * confettiCanvas.width,
-          y: Math.random() * confettiCanvas.height - confettiCanvas.height,
-          w: Math.random() * 12 + 6,
-          h: Math.random() * 8 + 4,
-          color: colors[Math.floor(Math.random() * colors.length)],
-          vx: (Math.random() - 0.5) * 4,
-          vy: Math.random() * 4 + 3,
-          rot: Math.random() * 360,
-          rotSpeed: (Math.random() - 0.5) * 8
-        });
-      }
-
-      function updateConfetti() {
-        confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-        confettiParticles.forEach(p => {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.rot += p.rotSpeed;
-
-          confettiCtx.save();
-          confettiCtx.translate(p.x, p.y);
-          confettiCtx.rotate((p.rot * Math.PI) / 180);
-          confettiCtx.fillStyle = p.color;
-          confettiCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-          confettiCtx.restore();
-
-          if (p.y > confettiCanvas.height) {
-            p.y = -20;
-            p.x = Math.random() * confettiCanvas.width;
-          }
-        });
-        confettiAnimId = requestAnimationFrame(updateConfetti);
-      }
-      updateConfetti();
-    }
-
-    function stopConfetti() {
-      if (confettiAnimId) cancelAnimationFrame(confettiAnimId);
-      confettiCanvas.classList.add('hidden');
-      confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-    }
-  </script>
-
-  <script>
-    /* ==========================================================================
-       5. MAIN GAME LOGIC & MODES PROGRESSION
-       ========================================================================== */
-    let currentMode = 'menu';
-    let selectedFoodIndex = 0;
-    let gameScore = 0;
-    let timeLeft = 40;
-    let cookingProgress = 0;
-    let gameLoopInterval = null;
-    let isPlaying = false;
-    let completedDishes = 0;
-    let sittingConsecutiveTicks = 0;
-
-    const scoreText = document.getElementById('score-text');
-    const timerText = document.getElementById('timer-text');
-    const progressBar = document.getElementById('progress-bar');
-    const gaugePercent = document.getElementById('gauge-percent');
-    const currentFoodName = document.getElementById('current-food-name');
-    
-    const startModal = document.getElementById('start-modal');
-    const foodSelectModal = document.getElementById('food-select-modal');
-    const gameoverModal = document.getElementById('gameover-modal');
-    const practicePanel = document.getElementById('practice-panel');
-    
-    const mainStartBtn = document.getElementById('main-start-btn');
-    const mainPracticeBtn = document.getElementById('main-practice-btn');
-    const exitPracticeBtn = document.getElementById('exit-practice-btn');
-    const backToMenuBtn = document.getElementById('back-to-menu-btn');
-    const confirmFoodStartBtn = document.getElementById('confirm-food-start-btn');
-    const restartBtn = document.getElementById('restart-btn');
-    
-    const camStatusMsg = document.getElementById('cam-status-msg');
-    const gameHud = document.getElementById('game-hud');
-    const gaugeContainer = document.getElementById('gauge-container');
-    const finalScoreText = document.getElementById('final-score-text');
-    const completedFoodsText = document.getElementById('completed-foods-text');
-    const switchCamBtn = document.getElementById('switch-cam-btn');
-    const foodCards = document.querySelectorAll('.food-card');
-
-    let currentFacingMode = 'user';
-    let poseDetector = null;
-
-    // 1. 음식 선택 카드 클릭 이벤트 바인딩
-    foodCards.forEach(card => {
-      card.addEventListener('click', () => {
-        foodCards.forEach(c => {
-          c.classList.remove('selected-food', 'ring-4', 'ring-orange-400', 'border-orange-500');
-          c.classList.add('border-amber-200');
-        });
-        card.classList.add('selected-food', 'ring-4', 'ring-orange-400', 'border-orange-500');
-        card.classList.remove('border-amber-200');
-        selectedFoodIndex = parseInt(card.getAttribute('data-food'), 10);
-      });
-    });
-
-    // 2. 연습 모드 시작
-    function startPracticeMode() {
-      sound.init();
-      unlockTTS();
-      sound.startBGM(); // 자세 연습하기 모드에서도 배경음악 재생
-      currentMode = 'practice';
-      isPlaying = false;
-      stopConfetti();
-      lastWarningTime = 0; // 즉시 첫 반응이 나오도록 초기화
-      rawSittingStartTime = null;
-      isSittingVerified = false;
-      practiceCelebrated = false;
-
-      startModal.classList.add('hidden');
-      foodSelectModal.classList.add('hidden');
-      gameoverModal.classList.add('hidden');
-      gameHud.classList.add('opacity-0');
-      gaugeContainer.classList.add('opacity-0');
-      document.getElementById('hud-center-anchor').classList.add('hidden');
-      document.getElementById('warning-alert').classList.add('hidden');
-
-      practicePanel.classList.remove('hidden');
-
-      // 연습 모드에서는 3D 음식 오브젝트를 화면에서 제거
-      clearFoodGroup();
-
-      lastPracticeState = null;
-      updatePoseStatus(currentPoseState);
-
-      // 시작 시 사용자 인터랙션 내에서 시작 안내 음성을 발화하여 TTS 오디오 세션을 완벽히 개방
-      setTimeout(() => {
-        if (currentMode === 'practice') {
-          speakVoice("자세 연습을 시작해요! 자리에 예쁘게 앉아볼까요?");
-        }
-      }, 350);
-    }
-
-    // 3. 연습 모드 종료 -> 메인 복귀
-    function exitPracticeMode() {
-      currentMode = 'menu';
-      sound.stopBGM(); // 메인 메뉴로 복귀 시 BGM 정지
-      stopConfetti();
-      practicePanel.classList.add('hidden');
-      document.getElementById('practice-coach-card').classList.add('hidden');
-      document.getElementById('hud-center-anchor').classList.add('hidden');
-      startModal.classList.remove('hidden', 'opacity-0');
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-      if (foodGroup) foodGroup.scale.set(0.1, 0.1, 0.1);
-    }
-
-    // 4. 음식 선택 모달 열기
-    function openFoodSelectModal() {
-      sound.init();
-      startModal.classList.add('hidden');
-      foodSelectModal.classList.remove('hidden');
-    }
-
-    // 5. 음식 선택에서 메인으로 복귀
-    function backToMainMenu() {
-      foodSelectModal.classList.add('hidden');
-      startModal.classList.remove('hidden');
-    }
-
-    // 6. 실전 게임 시작
-    async function startActualGame() {
-      sound.init();
-      unlockTTS();
-      sound.startBGM();
-      currentMode = 'game';
-
-      gameScore = 20; // 기본 점수 20점으로 시작
-      timeLeft = 40;
-      cookingProgress = 0;
-      completedDishes = 0;
-      sittingConsecutiveTicks = 0;
-      currentFoodType = selectedFoodIndex;
-      lastGameState = null;
-      lastWarningTime = 0;
-      torsoMovementEnergy = 0;
-      prevTorsoCenter = null;
-
-      scoreText.textContent = `${gameScore}점`;
-      timerText.textContent = `${timeLeft}초`;
-      createFoodModel(currentFoodType);
-      currentFoodName.textContent = foodItems[currentFoodType].name + " 만드는 중!";
-
-      foodSelectModal.classList.add('hidden');
-      startModal.classList.add('hidden');
-      practicePanel.classList.add('hidden');
-      gameoverModal.classList.add('hidden');
-      stopConfetti();
-
-      gameHud.classList.remove('opacity-0');
-      gaugeContainer.classList.remove('opacity-0');
-      document.getElementById('hud-center-anchor').classList.remove('hidden');
-
-      isPlaying = true;
-
-      let tickCounter = 0;
-      if (gameLoopInterval) clearInterval(gameLoopInterval);
-
-      gameLoopInterval = setInterval(() => {
-        if (!isPlaying || currentMode !== 'game') return;
-        tickCounter++;
-
-        // 1초 단위 타이머 감소
-        if (tickCounter % 10 === 0) {
-          timeLeft--;
-          timerText.textContent = `${timeLeft}초`;
-
-          if (timeLeft <= 5) {
-            timerText.classList.add('animate-bounce', 'text-red-600');
-          } else {
-            timerText.classList.remove('animate-bounce');
-          }
-
-          if (timeLeft <= 0) {
-            endGame();
-            return;
-          }
+        function unlockAudioEngine() {
+            initAudioEngine();
+            // TTS Engine Warmup for Local Files
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.resume();
+                window.speechSynthesis.getVoices();
+            }
         }
 
-        // 자세에 따른 게임 플레이 업데이트 (1초 이상 앉은 상태가 확인되었을 때만 요리 및 점수 누적)
-        if (currentPoseState === POSE_STATE.SITTING && isSittingVerified) {
-          cookingProgress += 1.4;
-          sittingConsecutiveTicks++;
+        // Korean Speech TTS Function with Error Recovery
+        function speakVoice(text) {
+            if (!('speechSynthesis' in window)) return;
 
-          // 3초(30틱) 유지 시마다 매너 점수 10점 추가
-          if (sittingConsecutiveTicks % 30 === 0) {
-            gameScore += 10;
-            scoreText.textContent = `${gameScore}점`;
-            sound.playScorePop();
-            
-            scoreText.classList.add('scale-125', 'text-amber-500');
-            setTimeout(() => scoreText.classList.remove('scale-125', 'text-amber-500'), 250);
-          }
+            unlockAudioEngine();
 
-          const targetScale = THREE.MathUtils.lerp(0.2, 1.1, cookingProgress / 100);
-          if (foodGroup) {
-            foodGroup.scale.set(targetScale, targetScale, targetScale);
-          }
+            setTimeout(() => {
+                try {
+                    window.speechSynthesis.cancel();
 
-          if (tickCounter % 10 === 0) {
-            sound.playTick();
-          }
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'ko-KR';
+                    utterance.rate = 0.92;
+                    utterance.pitch = 1.05;
+                    utterance.volume = 1.0;
 
-          // 음식 완성 100% 도달
-          if (cookingProgress >= 100) {
-            completedDishes++;
-            gameScore += 30;
-            scoreText.textContent = `${gameScore}점`;
-            sound.playChime();
+                    const voices = window.speechSynthesis.getVoices();
+                    const krVoice = voices.find(v => v.lang.includes('ko') || v.lang.includes('KO'));
+                    if (krVoice) utterance.voice = krVoice;
 
-            // 선택한 음식만 지속적으로 요리되도록 고정 (다른 음식으로 변경 X)
-            createFoodModel(currentFoodType);
-            currentFoodName.textContent = foodItems[currentFoodType].name + " 만드는 중!";
-            cookingProgress = 0;
+                    // Audio Ducking (Temporarily duck BGM during speech)
+                    utterance.onstart = () => {
+                        if (bgmGainNode && audioCtx) {
+                            bgmGainNode.gain.setTargetAtTime(0.04, audioCtx.currentTime, 0.1);
+                        }
+                    };
+                    utterance.onend = () => {
+                        if (bgmGainNode && audioCtx) {
+                            bgmGainNode.gain.setTargetAtTime(0.12, audioCtx.currentTime, 0.2);
+                        }
+                    };
+                    utterance.onerror = () => {
+                        if (bgmGainNode && audioCtx) {
+                            bgmGainNode.gain.setTargetAtTime(0.12, audioCtx.currentTime, 0.2);
+                        }
+                    };
 
-            gaugeContainer.classList.add('scale-105');
-            setTimeout(() => gaugeContainer.classList.remove('scale-105'), 300);
-          }
-        } else {
-          sittingConsecutiveTicks = 0;
-
-          if (cookingProgress > 0) {
-            cookingProgress = Math.max(0, cookingProgress - 0.7);
-          }
-          if (tickCounter % 10 === 0 && gameScore > 0) {
-            gameScore = Math.max(0, gameScore - 1);
-            scoreText.textContent = `${gameScore}점`;
-          }
-          if (foodGroup) {
-            const currentS = foodGroup.scale.x;
-            foodGroup.scale.set(Math.max(0.2, currentS * 0.98), Math.max(0.2, currentS * 0.98), Math.max(0.2, currentS * 0.98));
-          }
+                    activeUtterance = utterance;
+                    window.speechSynthesis.speak(utterance);
+                } catch (e) {
+                    console.warn("TTS Execution Error:", e);
+                }
+            }, 80);
         }
 
-        progressBar.style.width = `${Math.min(100, Math.floor(cookingProgress))}%`;
-        gaugePercent.textContent = `${Math.min(100, Math.floor(cookingProgress))}%`;
+        const SoundEffects = {
+            playScoreChime() {
+                if (!audioCtx) return;
+                const now = audioCtx.currentTime;
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
 
-      }, 100);
-    }
+                osc1.type = 'sine';
+                osc2.type = 'triangle';
+                osc1.frequency.setValueAtTime(523.25, now); // C5
+                osc1.frequency.exponentialRampToValueAtTime(1046.50, now + 0.3); // C6
 
-    function endGame() {
-      isPlaying = false;
-      clearInterval(gameLoopInterval);
-      sound.stopBGM();
-      sound.playFanfare();
+                osc2.frequency.setValueAtTime(659.25, now); // E5
+                osc2.frequency.exponentialRampToValueAtTime(1318.51, now + 0.3); // E6
 
-      gameHud.classList.add('opacity-0');
-      gaugeContainer.classList.add('opacity-0');
-      document.getElementById('hud-center-anchor').classList.add('hidden');
-      document.getElementById('warning-alert').classList.add('hidden');
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
-      finalScoreText.textContent = `${gameScore}점`;
-      
-      const emojis = ['🍕', '🍔', '🍰'];
-      let dishDisplay = '';
-      for (let i = 0; i < Math.max(1, completedDishes); i++) {
-        dishDisplay += emojis[i % emojis.length] + ' ';
-      }
-      completedFoodsText.textContent = `${dishDisplay} (${completedDishes}접시 완성!)`;
+                osc1.connect(gain);
+                osc2.connect(gain);
+                gain.connect(audioCtx.destination);
 
-      gameoverModal.classList.remove('hidden');
-      startConfetti();
-    }
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 0.35);
+                osc2.stop(now + 0.35);
+            },
 
-    const isMobileDevice = /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent) || 
-      (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+            playWarning() {
+                if (!audioCtx) return;
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
 
-    async function initCameraAndPose() {
-      try {
-        camStatusMsg.textContent = "카메라를 준비하고 있습니다. 잠시만 기다려주세요...";
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now); // A3
+                osc.frequency.setValueAtTime(160, now + 0.12);
 
-        const targetComplexity = isMobileDevice ? 0 : 1;
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
 
-        poseDetector = new Pose({
-          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
 
-        poseDetector.setOptions({
-          modelComplexity: targetComplexity,
-          smoothLandmarks: true,
-          enableSegmentation: false,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
+                osc.start(now);
+                osc.stop(now + 0.3);
+            },
 
-        poseDetector.onResults(onPoseResults);
+            playFanfare() {
+                if (!audioCtx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
+                notes.forEach((freq, i) => {
+                    const now = audioCtx.currentTime + (i * 0.12);
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
 
-        await setupWebcamStream();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
 
-        camStatusMsg.textContent = "✅ 카메라 준비 완료! 원하는 모드를 선택해주세요.";
-        camStatusMsg.classList.add('text-emerald-700', 'font-bold');
-      } catch (err) {
-        console.error("Camera Init Error:", err);
-        camStatusMsg.textContent = "⚠️ 웹캠 연결에 실패했습니다. 카메라 권한을 확인해주세요.";
-        camStatusMsg.classList.add('text-rose-600', 'font-bold');
-      }
-    }
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
 
-    async function setupWebcamStream() {
-      if (videoElement.srcObject) {
-        const stream = videoElement.srcObject;
-        stream.getTracks().forEach(track => track.stop());
-      }
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
 
-      if (currentFacingMode === 'user') {
-        canvasElement.classList.add('mirror-view');
-      } else {
-        canvasElement.classList.remove('mirror-view');
-      }
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                });
+            },
 
-      const constraints = {
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 30, max: 30 }
-        },
-        audio: false
-      };
+            startBGM() {
+                initAudioEngine();
+                if (bgmInterval) return;
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      videoElement.srcObject = mediaStream;
+                bgmGainNode = audioCtx.createGain();
+                bgmGainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                bgmGainNode.connect(audioCtx.destination);
 
-      await new Promise((resolve) => {
-        videoElement.onloadedmetadata = () => {
-          videoElement.play();
-          resolve();
+                const melody = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+                let step = 0;
+
+                bgmInterval = setInterval(() => {
+                    if (!audioCtx || audioCtx.state !== 'running') return;
+                    const now = audioCtx.currentTime;
+                    const osc = audioCtx.createOscillator();
+                    const noteGain = audioCtx.createGain();
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(melody[step % melody.length], now);
+
+                    noteGain.gain.setValueAtTime(0.15, now);
+                    noteGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+                    osc.connect(noteGain);
+                    noteGain.connect(bgmGainNode);
+
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                    step++;
+                }, 300);
+            },
+
+            stopBGM() {
+                if (bgmInterval) {
+                    clearInterval(bgmInterval);
+                    bgmInterval = null;
+                }
+            }
         };
-      });
 
-      async function poseFrameLoop() {
-        if (!videoElement.paused && !videoElement.ended) {
-          await poseDetector.send({ image: videoElement });
+        /* -------------------------------------------------------------------------- */
+        /*  3. Three.js Procedural Low-Poly 3D Food Generator                         */
+        /* -------------------------------------------------------------------------- */
+        let scene, camera, renderer, foodGroup;
+
+        function initThree() {
+            const canvas = document.getElementById('three-canvas');
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 8);
+
+            renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+
+            foodGroup = new THREE.Group();
+            scene.add(foodGroup);
+
+            window.addEventListener('resize', onWindowResize);
+            animateThree();
         }
-        requestAnimationFrame(poseFrameLoop);
-      }
-      requestAnimationFrame(poseFrameLoop);
-    }
 
-    switchCamBtn.addEventListener('click', async () => {
-      currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-      try {
-        switchCamBtn.disabled = true;
-        await setupWebcamStream();
-      } catch (e) {
-        console.warn('Camera switch error:', e);
-      } finally {
-        switchCamBtn.disabled = false;
-      }
-    });
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
 
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => {
-        onWindowResize();
-      }, 300);
-    });
+        function animateThree() {
+            requestAnimationFrame(animateThree);
+            if (foodGroup) {
+                foodGroup.rotation.y += 0.015;
+            }
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
 
-    window.addEventListener('touchstart', function unlockAudio() {
-      sound.init();
-      unlockTTS();
-      window.removeEventListener('touchstart', unlockAudio);
-    }, { passive: true });
+        function clearFoodGroup() {
+            while (foodGroup.children.length > 0) {
+                const obj = foodGroup.children[0];
+                foodGroup.remove(obj);
+            }
+        }
 
-    mainPracticeBtn.addEventListener('click', () => {
-      unlockTTS();
-      startPracticeMode();
-    });
+        function createFoodModel(typeIndex, scaleProgress = 1.0) {
+            clearFoodGroup();
 
-    exitPracticeBtn.addEventListener('click', () => {
-      exitPracticeMode();
-    });
+            const container = new THREE.Group();
 
-    mainStartBtn.addEventListener('click', () => {
-      unlockTTS();
-      openFoodSelectModal();
-    });
+            if (typeIndex === 0) {
+                // Pizza
+                const crustGeo = new THREE.CylinderGeometry(2, 2, 0.2, 12);
+                const crustMat = new THREE.MeshLambertMaterial({ color: 0xe5a04d });
+                const crust = new THREE.Mesh(crustGeo, crustMat);
+                container.add(crust);
 
-    backToMenuBtn.addEventListener('click', () => {
-      backToMainMenu();
-    });
+                const cheeseGeo = new THREE.CylinderGeometry(1.85, 1.85, 0.22, 12);
+                const cheeseMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
+                const cheese = new THREE.Mesh(cheeseGeo, cheeseMat);
+                container.add(cheese);
 
-    confirmFoodStartBtn.addEventListener('click', () => {
-      startActualGame();
-    });
+                // Pepperonis
+                for (let i = 0; i < 6; i++) {
+                    const pepGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 8);
+                    const pepMat = new THREE.MeshLambertMaterial({ color: 0xb91c1c });
+                    const pep = new THREE.Mesh(pepGeo, pepMat);
+                    const angle = (i / 6) * Math.PI * 2;
+                    pep.position.set(Math.cos(angle) * 1.0, 0.05, Math.sin(angle) * 1.0);
+                    container.add(pep);
+                }
+            } else if (typeIndex === 1) {
+                // Burger
+                const bunMat = new THREE.MeshLambertMaterial({ color: 0xd97706 });
+                const pattyMat = new THREE.MeshLambertMaterial({ color: 0x451a03 });
+                const cheeseMat = new THREE.MeshLambertMaterial({ color: 0xfacc15 });
 
-    restartBtn.addEventListener('click', () => {
-      gameoverModal.classList.add('hidden');
-      openFoodSelectModal();
-    });
+                const bottomBun = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.5, 0.4, 12), bunMat);
+                bottomBun.position.y = -0.6;
+                container.add(bottomBun);
 
-    window.onload = function () {
-      initThree();
-      animateThree();
-      initCameraAndPose();
-    };
-  </script>
+                const patty = new THREE.Mesh(new THREE.CylinderGeometry(1.65, 1.65, 0.35, 12), pattyMat);
+                patty.position.y = -0.2;
+                container.add(patty);
+
+                const cheese = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.08, 2.3), cheeseMat);
+                cheese.position.y = 0.05;
+                cheese.rotation.y = Math.PI / 4;
+                container.add(cheese);
+
+                const topBun = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), bunMat);
+                topBun.position.y = 0.1;
+                container.add(topBun);
+            } else {
+                // Strawberry Cake
+                const cakeMat = new THREE.MeshLambertMaterial({ color: 0xfff1f2 });
+                const creamMat = new THREE.MeshLambertMaterial({ color: 0xfda4af });
+                const berryMat = new THREE.MeshLambertMaterial({ color: 0xe11d48 });
+
+                const baseCake = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 1.2, 12), cakeMat);
+                baseCake.position.y = -0.3;
+                container.add(baseCake);
+
+                const creamLayer = new THREE.Mesh(new THREE.CylinderGeometry(1.82, 1.82, 0.2, 12), creamMat);
+                creamLayer.position.y = 0.3;
+                container.add(creamLayer);
+
+                // Strawberries
+                for (let i = 0; i < 5; i++) {
+                    const berry = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.5, 8), berryMat);
+                    const angle = (i / 5) * Math.PI * 2;
+                    berry.position.set(Math.cos(angle) * 1.0, 0.65, Math.sin(angle) * 1.0);
+                    container.add(berry);
+                }
+            }
+
+            container.position.set(0, -1.0, 0);
+            const s = Math.max(0.1, scaleProgress);
+            container.scale.set(s, s, s);
+
+            foodGroup.add(container);
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /*  4. MediaPipe Pose Analysis & Strict Posture Classification Engine         */
+        /* -------------------------------------------------------------------------- */
+        const POSE_LANDMARKS = {
+            LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
+            LEFT_ELBOW: 13, RIGHT_ELBOW: 14,
+            LEFT_WRIST: 15, RIGHT_WRIST: 16,
+            LEFT_HIP: 23, RIGHT_HIP: 24,
+            LEFT_KNEE: 25, RIGHT_KNEE: 26,
+            LEFT_ANKLE: 27, RIGHT_ANKLE: 28
+        };
+
+        function classifyPosture(landmarks) {
+            if (!landmarks) return 'ABSENT';
+
+            const lSh = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+            const rSh = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+            const lHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
+            const rHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
+            const lKnee = landmarks[POSE_LANDMARKS.LEFT_KNEE];
+            const rKnee = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
+            const lAnkle = landmarks[POSE_LANDMARKS.LEFT_ANKLE];
+            const rAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
+
+            // 1. Presence Validation
+            const upperBodyVis = (lSh.visibility + rSh.visibility + lHip.visibility + rHip.visibility) / 4;
+            if (upperBodyVis < 0.35) {
+                return 'ABSENT';
+            }
+
+            const avgHipY = (lHip.y + rHip.y) / 2;
+            const avgKneeY = (lKnee.y + rKnee.y) / 2;
+            const avgAnkleY = (lAnkle.y + rAnkle.y) / 2;
+
+            // 2. Leg Raised Check (Legs lifted above knee height / onto table)
+            if (lAnkle.visibility > 0.4 && rAnkle.visibility > 0.4) {
+                if (avgAnkleY < avgKneeY - 0.05) {
+                    return 'LEG_RAISED';
+                }
+            }
+
+            // 3. Torso / Body Wandering Movement Check
+            const avgShoulderX = (lSh.x + rSh.x) / 2;
+            const avgShoulderY = (lSh.y + rSh.y) / 2;
+            const avgHipX = (lHip.x + rHip.x) / 2;
+
+            let torsoVel = 0;
+            if (prevKeypoints) {
+                const dx = (avgShoulderX - prevKeypoints.shX) + (avgHipX - prevKeypoints.hipX);
+                const dy = (avgShoulderY - prevKeypoints.shY) + (avgHipY - prevKeypoints.hipY);
+                torsoVel = Math.sqrt(dx * dx + dy * dy);
+            }
+
+            // Sensitive Torso Movement Smoothing
+            smoothedTorsoEnergy = smoothedTorsoEnergy * 0.6 + torsoVel * 0.4;
+
+            // 4. Sitting vs Standing Height Ratio Validation
+            // Sitting requirement: Hip and Knee must be nearly at the same horizontal level (|Hip Y - Knee Y| <= 0.18)
+            const hipKneeDiff = Math.abs(avgHipY - avgKneeY);
+            const isSittingElevation = (hipKneeDiff <= 0.18) || (avgHipY > 0.68);
+
+            if (!isSittingElevation) {
+                return 'STANDING';
+            }
+
+            // If torso is excessively moving or swaying while sitting
+            if (smoothedTorsoEnergy > 0.04) {
+                return 'STANDING'; // High priority wandering
+            }
+
+            // 5. Arm Motion Sensitivity Analysis
+            const lWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
+            const rWrist = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
+            const lElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+            const rElbow = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
+
+            let armVel = 0;
+            if (prevKeypoints) {
+                const dw1 = Math.hypot(lWrist.x - prevKeypoints.lWx, lWrist.y - prevKeypoints.lWy);
+                const dw2 = Math.hypot(rWrist.x - prevKeypoints.rWx, rWrist.y - prevKeypoints.rWy);
+                const de1 = Math.hypot(lElbow.x - prevKeypoints.lEx, lElbow.y - prevKeypoints.lEy);
+                const de2 = Math.hypot(rElbow.x - prevKeypoints.rEx, rElbow.y - prevKeypoints.rEy);
+                armVel = (dw1 + dw2 + de1 + de2) / 4;
+            }
+
+            smoothedArmEnergy = smoothedArmEnergy * 0.7 + armVel * 0.3;
+
+            // Update keypoints cache
+            prevKeypoints = {
+                shX: avgShoulderX, shY: avgShoulderY,
+                hipX: avgHipX, hipY: avgHipY,
+                lWx: lWrist.x, lWy: lWrist.y,
+                rWx: rWrist.x, rWy: rWrist.y,
+                lEx: lElbow.x, lEy: lElbow.y
+            };
+
+            // Moderate Arm Movement Threshold (0.80)
+            if (smoothedArmEnergy > 0.08) {
+                return 'SITTING_ARM_MOVING';
+            }
+
+            return 'SITTING';
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /*  5. Canvas Skeleton Renderer                                               */
+        /* -------------------------------------------------------------------------- */
+        function drawSkeleton(ctx, landmarks, posture) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            if (!landmarks) return;
+
+            const isGood = (posture === 'SITTING');
+            const lineColor = isGood ? '#a3e635' : '#f43f5e'; // Lime Green vs Rose Red
+            const pointColor = isGood ? '#4ade80' : '#fb7185';
+
+            const connections = [
+                [11,12], [11,13], [13,15], [12,14], [14,16], // Upper body
+                [11,23], [12,24], [23,24],                  // Torso
+                [23,25], [24,26], [25,27], [26,28]           // Legs
+            ];
+
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+
+            // Draw Bone Lines
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = lineColor;
+            ctx.shadowColor = lineColor;
+            ctx.shadowBlur = 12;
+
+            connections.forEach(([i, j]) => {
+                const p1 = landmarks[i];
+                const p2 = landmarks[j];
+                if (p1 && p2 && p1.visibility > 0.3 && p2.visibility > 0.3) {
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x * w, p1.y * h);
+                    ctx.lineTo(p2.x * w, p2.y * h);
+                    ctx.stroke();
+                }
+            });
+
+            // Draw Joint Points
+            ctx.fillStyle = pointColor;
+            ctx.shadowBlur = 6;
+            landmarks.forEach((p) => {
+                if (p && p.visibility > 0.3) {
+                    ctx.beginPath();
+                    ctx.arc(p.x * w, p.y * h, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            });
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /*  6. Core Game Loop & Posture Handling                                      */
+        /* -------------------------------------------------------------------------- */
+        function handlePostureFeedback(posture) {
+            const warningAlert = document.getElementById('warning-alert');
+            const warningIcon = document.getElementById('warning-icon');
+            const warningText = document.getElementById('warning-text');
+
+            const statusBadge = document.getElementById('status-badge');
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+
+            const now = Date.now();
+
+            if (posture === 'SITTING') {
+                if (rawSittingStartTime === 0) rawSittingStartTime = now;
+
+                // 1-Second Hold Verification
+                if (now - rawSittingStartTime >= 1000) {
+                    isSittingVerified = true;
+                } else {
+                    isSittingVerified = false;
+                }
+            } else {
+                rawSittingStartTime = 0;
+                isSittingVerified = false;
+                sittingConsecutiveTicks = 0;
+            }
+
+            // A. Correct Posture ('SITTING' Verified >= 1s)
+            if (isSittingVerified) {
+                warningAlert.classList.add('hidden');
+
+                if (currentState === GameState.PRACTICE) {
+                    statusBadge.classList.remove('hidden');
+                    statusIcon.innerText = '✨';
+                    statusText.innerText = '참 잘했어요!';
+
+                    if (now - lastWarningTime > 3000) {
+                        lastWarningTime = now;
+                        SoundEffects.playScoreChime();
+                        speakVoice("참 잘했어요!");
+                        confetti({ particleCount: 30, spread: 60, origin: { y: 0.8 } });
+                    }
+                } else if (currentState === GameState.PLAYING) {
+                    statusBadge.classList.remove('hidden');
+                    statusIcon.innerText = '🪑';
+                    statusText.innerText = '잘했어요!';
+
+                    // 3-second consecutive tick (30 frames) for +10 score
+                    sittingConsecutiveTicks++;
+                    foodProgress = Math.min(100, foodProgress + 0.3);
+
+                    const progressBar = document.getElementById('progress-bar');
+                    if (progressBar) progressBar.style.width = `${foodProgress}%`;
+
+                    // Scale 3D Food as Progress fills
+                    createFoodModel(selectedFoodIndex, 0.4 + (foodProgress / 100) * 0.8);
+
+                    if (sittingConsecutiveTicks >= 90) { // 3 seconds at 30fps
+                        sittingConsecutiveTicks = 0;
+                        gameScore += 10;
+                        updateHUD();
+                        SoundEffects.playScoreChime();
+
+                        const scoreVal = document.getElementById('score-val');
+                        scoreVal.classList.add('animate-bounce');
+                        setTimeout(() => scoreVal.classList.remove('animate-bounce'), 800);
+                    }
+
+                    if (foodProgress >= 100) {
+                        foodProgress = 0;
+                        SoundEffects.playFanfare();
+                        confetti({ particleCount: 80, spread: 100, origin: { y: 0.5 } });
+                    }
+                }
+                return;
+            }
+
+            // B. Unverified / In-Progress Sitting
+            if (posture === 'SITTING' && !isSittingVerified) {
+                warningAlert.classList.add('hidden');
+                statusBadge.classList.remove('hidden');
+                statusIcon.innerText = '⏳';
+                statusText.innerText = '자세 유지 중...';
+                return;
+            }
+
+            // C. Incorrect Postures (Wandering, Leg Raised, Arm Waving, Absent)
+            statusBadge.classList.add('hidden');
+
+            let msg = '';
+            let icon = '🚨';
+
+            // Priority Ordering: LEG_RAISED > STANDING > SITTING_ARM_MOVING > ABSENT
+            if (posture === 'LEG_RAISED') {
+                msg = '다리를 내리고 예쁘게 앉아요!';
+                icon = '🦶';
+            } else if (posture === 'STANDING' || posture === 'ABSENT') {
+                msg = '돌아다니지 않아요!';
+                icon = '🚨';
+            } else if (posture === 'SITTING_ARM_MOVING') {
+                msg = '팔을 제자리로 해요!';
+                icon = '🖐️';
+            }
+
+            warningIcon.innerText = icon;
+            warningText.innerText = msg;
+            warningAlert.classList.remove('hidden');
+
+            // Sound & Voice Trigger with 5-Second Cooldown
+            if (now - lastWarningTime >= WARNING_COOLDOWN_MS) {
+                lastWarningTime = now;
+                SoundEffects.playWarning();
+                speakVoice(msg);
+
+                if (currentState === GameState.PLAYING) {
+                    gameScore = Math.max(0, gameScore - 2);
+                    updateHUD();
+                }
+            }
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /*  7. MediaPipe Pose Initialization & Camera Controller                     */
+        /* -------------------------------------------------------------------------- */
+        function onPoseResults(results) {
+            const canvas = document.getElementById('skeleton-canvas');
+            const ctx = canvas.getContext('2d');
+
+            if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+
+            currentPosture = classifyPosture(results.poseLandmarks);
+            drawSkeleton(ctx, results.poseLandmarks, currentPosture);
+
+            if (currentState === GameState.PLAYING || currentState === GameState.PRACTICE) {
+                handlePostureFeedback(currentPosture);
+            }
+        }
+
+        function initMediaPipe() {
+            const pose = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+
+            pose.setOptions({
+                modelComplexity: 0, // Lightweight Mobile/Tablet Optimization
+                smoothLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            pose.onResults(onPoseResults);
+
+            const videoElement = document.getElementById('webcam-video');
+
+            cameraUtils = new Camera(videoElement, {
+                onFrame: async () => {
+                    await pose.send({ image: videoElement });
+                },
+                width: 1280,
+                height: 720
+            });
+
+            cameraUtils.start();
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /*  8. State Transitions & UI Navigation                                       */
+        /* -------------------------------------------------------------------------- */
+        function updateHUD() {
+            document.getElementById('score-val').innerText = `${gameScore}점`;
+            document.getElementById('timer-val').innerText = `${gameTimeLeft}초`;
+        }
+
+        function switchState(newState) {
+            currentState = newState;
+
+            // Hide All Screens
+            document.getElementById('screen-main').classList.add('hidden');
+            document.getElementById('screen-select-food').classList.add('hidden');
+            document.getElementById('screen-result').classList.add('hidden');
+
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('practice-hud').classList.add('hidden');
+            document.getElementById('food-progress-container').classList.add('hidden');
+
+            document.getElementById('warning-alert').classList.add('hidden');
+            document.getElementById('status-badge').classList.add('hidden');
+
+            clearFoodGroup();
+
+            if (newState === GameState.MAIN) {
+                document.getElementById('screen-main').classList.remove('hidden');
+                SoundEffects.stopBGM();
+            } else if (newState === GameState.PRACTICE) {
+                document.getElementById('practice-hud').classList.remove('hidden');
+                SoundEffects.startBGM();
+                speakVoice("자세 연습을 시작해요! 자리에 예쁘게 앉아볼까요?");
+            } else if (newState === GameState.SELECT_FOOD) {
+                document.getElementById('screen-select-food').classList.remove('hidden');
+            } else if (newState === GameState.PLAYING) {
+                document.getElementById('game-hud').classList.remove('hidden');
+                document.getElementById('food-progress-container').classList.remove('hidden');
+
+                gameScore = 20;
+                gameTimeLeft = 20; // 20-second timer
+                foodProgress = 0;
+                sittingConsecutiveTicks = 0;
+                updateHUD();
+
+                createFoodModel(selectedFoodIndex, 0.4);
+                SoundEffects.startBGM();
+
+                // Start Game Timer Loop
+                if (gameInterval) clearInterval(gameInterval);
+                gameInterval = setInterval(() => {
+                    gameTimeLeft--;
+                    updateHUD();
+
+                    if (gameTimeLeft <= 0) {
+                        clearInterval(gameInterval);
+                        gameInterval = null;
+                        finishGame();
+                    }
+                }, 1000);
+            } else if (newState === GameState.RESULT) {
+                document.getElementById('screen-result').classList.remove('hidden');
+                document.getElementById('final-score').innerText = `${gameScore}점`;
+                SoundEffects.stopBGM();
+                SoundEffects.playFanfare();
+                confetti({ particleCount: 120, spread: 100, origin: { y: 0.4 } });
+            }
+        }
+
+        function finishGame() {
+            switchState(GameState.RESULT);
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /*  9. Event Listeners & Bootstrapping                                        */
+        /* -------------------------------------------------------------------------- */
+        document.addEventListener('DOMContentLoaded', () => {
+            initThree();
+            initMediaPipe();
+
+            // Screen Buttons
+            document.getElementById('btn-practice-mode').addEventListener('click', () => {
+                unlockAudioEngine();
+                switchState(GameState.PRACTICE);
+            });
+
+            document.getElementById('btn-start-select').addEventListener('click', () => {
+                unlockAudioEngine();
+                switchState(GameState.SELECT_FOOD);
+            });
+
+            document.getElementById('btn-back-main').addEventListener('click', () => {
+                switchState(GameState.MAIN);
+            });
+
+            document.getElementById('btn-exit-practice').addEventListener('click', () => {
+                switchState(GameState.MAIN);
+            });
+
+            document.getElementById('btn-start-game').addEventListener('click', () => {
+                unlockAudioEngine();
+                switchState(GameState.PLAYING);
+            });
+
+            document.getElementById('btn-restart-game').addEventListener('click', () => {
+                switchState(GameState.MAIN);
+            });
+
+            // Food Card Selection Listener
+            const foodCards = document.querySelectorAll('.food-card');
+            foodCards.forEach(card => {
+                card.addEventListener('click', () => {
+                    foodCards.forEach(c => c.classList.remove('food-card-selected'));
+                    card.classList.add('food-card-selected');
+                    selectedFoodIndex = parseInt(card.getAttribute('data-food-index'), 10);
+                });
+            });
+
+            // Flip Camera Toggle
+            document.getElementById('btn-flip-cam').addEventListener('click', () => {
+                facingMode = (facingMode === 'user') ? 'environment' : 'user';
+                const videoEl = document.getElementById('webcam-video');
+                const skeletonCanvas = document.getElementById('skeleton-canvas');
+
+                if (facingMode === 'user') {
+                    videoEl.classList.add('mirror-mode');
+                    skeletonCanvas.classList.add('mirror-mode');
+                } else {
+                    videoEl.classList.remove('mirror-mode');
+                    skeletonCanvas.classList.remove('mirror-mode');
+                }
+
+                if (cameraUtils) {
+                    cameraUtils.stop();
+                    cameraUtils = new Camera(videoEl, {
+                        onFrame: async () => {
+                            const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+                            await pose.send({ image: videoEl });
+                        },
+                        facingMode: facingMode,
+                        width: 1280,
+                        height: 720
+                    });
+                    cameraUtils.start();
+                }
+            });
+
+            // Global Touch Unlock for Audio & Speech Synthesis
+            window.addEventListener('touchstart', unlockAudioEngine, { once: true });
+            window.addEventListener('click', unlockAudioEngine, { once: true });
+        });
+    </script>
 </body>
 </html>
